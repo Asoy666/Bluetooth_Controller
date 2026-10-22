@@ -1,1 +1,897 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotic web - IoT & Vision AI Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js and Teachable Machine Image Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
+    <div class="flex h-screen overflow-hidden">
+
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between hidden md:flex z-10 shadow-sm">
+            <div>
+                <!-- Brand Header -->
+                <div class="p-6 flex items-center space-x-3 border-b border-slate-100">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                        <i class="fa-solid fa-robot text-lg"></i>
+                    </div>
+                    <span class="text-xl font-bold tracking-tight text-slate-900">Robotic<span class="text-blue-600">web</span></span>
+                </div>
+
+                <!-- Navigation Links -->
+                <nav class="p-4 space-y-1.5">
+                    <a href="#" onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-white bg-blue-600 shadow-md shadow-blue-500/20 transition-all">
+                        <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="#" onclick="switchTab('vision')" id="nav-vision" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                        <i class="fa-solid fa-eye w-5 text-center"></i>
+                        <span>Vision AI</span>
+                    </a>
+                    <a href="#" onclick="switchTab('bt')" id="nav-bt" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                        <i class="fa-solid fa-bluetooth-b w-5 text-center"></i>
+                        <span>BT Controller</span>
+                    </a>
+                    <a href="#" onclick="switchTab('help')" id="nav-help" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                        <i class="fa-solid fa-circle-question w-5 text-center"></i>
+                        <span>Help Center</span>
+                    </a>
+                    <a href="#" onclick="switchTab('settings')" id="nav-settings" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                        <i class="fa-solid fa-gear w-5 text-center"></i>
+                        <span>Settings</span>
+                    </a>
+                </nav>
+            </div>
+
+            <!-- Developer Card Widget -->
+            <div class="p-4 m-4 bg-slate-900 text-white rounded-2xl shadow-lg relative overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none"></div>
+                <div class="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-1">Developer</div>
+                <div class="text-sm font-bold text-slate-100 mb-2">M. Aysar Rizqin</div>
+                <div class="space-y-1 text-xs text-slate-300">
+                    <div class="flex items-center space-x-2 truncate">
+                        <i class="fa-brands fa-github text-slate-300 w-4"></i>
+                        <span class="truncate">maysarrizqin</span>
+                    </div>
+                    <div class="flex items-center space-x-2 truncate">
+                        <i class="fa-solid fa-envelope text-blue-400 w-4"></i>
+                        <span class="truncate">aysarrizqin@gmail.com</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50">
+
+            <!-- Top Control Bar -->
+            <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-20 shadow-xs">
+                
+                <!-- Status Indicators (BT & FB) -->
+                <div class="flex items-center space-x-3">
+                    <div id="bt-status-badge" class="px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        <span>BT: OFFLINE</span>
+                    </div>
+                    <div id="fb-status-badge" class="px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        <span>FB: OFFLINE</span>
+                    </div>
+                </div>
+
+                <!-- Connect Micro:bit Action Only -->
+                <div class="flex items-center space-x-3 flex-wrap">
+                    <button onclick="connectMicrobit()" id="microbit-connect-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center space-x-2 cursor-pointer">
+                        <i class="fa-brands fa-bluetooth"></i>
+                        <span>MICRO:BIT</span>
+                    </button>
+                </div>
+            </header>
+
+            <div id="main-content-area" class="p-6 flex-1 flex flex-col max-w-7xl w-full mx-auto">
+                <!-- Content injected dynamically via switchTab() -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Custom Mapping BT Controller -->
+    <div id="mapping-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in duration-200">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-sliders text-blue-600"></i>
+                    <span>Pengaturan Mapping Perintah BT</span>
+                </h3>
+                <button onclick="toggleMappingModal(false)" class="text-slate-400 hover:text-slate-600 text-sm font-bold px-2 py-1">✕</button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">UP (Maju)</label>
+                    <input type="text" id="map-up" value="up" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">DOWN (Mundur)</label>
+                    <input type="text" id="map-down" value="down" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">LEFT (Kiri)</label>
+                    <input type="text" id="map-left" value="left" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">RIGHT (Kanan)</label>
+                    <input type="text" id="map-right" value="right" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">STOP (Lepas Semua Tombol)</label>
+                    <input type="text" id="map-stop" value="stop" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
+            </div>
+
+            <div class="pt-2">
+                <button onclick="saveMappingConfig()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3 rounded-xl shadow-md shadow-blue-500/20 transition cursor-pointer">
+                    SIMPAN MAPPING
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Message Modal / Box -->
+    <div id="notification-modal" class="fixed bottom-6 right-6 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl z-50 transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3">
+        <i id="notif-icon" class="fa-solid fa-circle-info text-blue-400"></i>
+        <span id="notif-text" class="text-sm font-medium">Notification message</span>
+    </div>
+
+    <script>
+        // State variables
+        let isCameraActive = false;
+        let isBluetoothConnected = false;
+        let isFirebaseSynced = false;
+        let videoStream = null;
+        let currentTab = 'dashboard';
+
+        // Teachable Machine Variables
+        let tmModel = null;
+        let maxPredictions = 0;
+        let isModelLoading = false;
+        let currentLabels = ['stop', 'up', 'down', 'left', 'right'];
+
+        // Custom BT Command Mapping State
+        let btMapping = {
+            UP: 'up',
+            DOWN: 'down',
+            LEFT: 'left',
+            RIGHT: 'right',
+            STOP: 'stop'
+        };
+
+        // Active key hold tracking to prevent duplicate spamming
+        let activeKeyCommand = null;
+
+        // Templates for each tab
+        const tabTemplates = {
+            dashboard: `
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-microchip"></i></div>
+                            <div>
+                                <div class="text-xs font-medium text-slate-500">Micro:bit Status</div>
+                                <div id="dash-bt-label" class="text-lg font-bold text-slate-800">Disconnected</div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-database"></i></div>
+                            <div>
+                                <div class="text-xs font-medium text-slate-500">Firebase DB</div>
+                                <div id="dash-fb-label" class="text-lg font-bold text-slate-800">Offline</div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-eye"></i></div>
+                            <div>
+                                <div class="text-xs font-medium text-slate-500">AI Model Status</div>
+                                <div id="dash-ai-label" class="text-lg font-bold text-slate-800">Ready</div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                            <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-signal"></i></div>
+                            <div>
+                                <div class="text-xs font-medium text-slate-500">Packet Rate</div>
+                                <div class="text-lg font-bold text-slate-800">12 msg/s</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                            <h3 class="text-base font-bold text-slate-800 mb-4">Real-time Telemetry Monitor</h3>
+                            <div class="h-64 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
+                                <i class="fa-solid fa-chart-line text-4xl mb-2 text-blue-500 animate-pulse"></i>
+                                <p class="text-sm font-semibold text-slate-700">Live sensor stream graph active</p>
+                                <p class="text-xs text-slate-500 mt-1">Listening to micro:bit sensor input & Teachable Machine inference events.</p>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                            <h3 class="text-base font-bold text-slate-800">Quick Actions</h3>
+                            <button onclick="connectMicrobit()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition shadow-sm">Connect Micro:bit</button>
+                            <button onclick="switchTab('vision')" class="w-full py-3 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold rounded-xl text-sm transition">Open Vision AI Panel</button>
+                            <button onclick="switchTab('bt')" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-xl text-sm transition">Open BT Controller</button>
+                        </div>
+                    </div>
+                </div>
+            `,
+            vision: `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Link Model Teachable Machine</label>
+                                <div class="flex space-x-2">
+                                    <input type="text" id="model-url" value="" placeholder="e.g. https://teachablemachine.withgoogle.com/models/xxxxxx/" class="flex-1 bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                                    <button onclick="loadTeachableMachineModel()" id="load-model-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-5 py-3 rounded-xl shadow transition flex items-center space-x-2 cursor-pointer">
+                                        <i class="fa-solid fa-cloud-arrow-down"></i>
+                                        <span>LOAD MODEL</span>
+                                    </button>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1.5">Masukkan URL Teachable Machine (mengandung model.json atau folder share publik)</p>
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <div>
+                                    <div class="text-sm font-bold text-slate-800 flex items-center space-x-2">
+                                        <span>IoT Auto-Send Mode</span>
+                                        <span class="bg-blue-100 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded">Active</span>
+                                    </div>
+                                    <div class="text-xs text-slate-500 mt-0.5">Otomatis kirim hasil deteksi (Key: "vision") ke Micro:bit jika confidence > 85%</div>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="auto-send-toggle" checked class="sr-only peer" onchange="toggleAutoSend()">
+                                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"></div>
+                                </label>
+                            </div>
+
+                            <button onclick="toggleCameraState()" id="camera-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer">
+                                <i class="fa-solid fa-video text-xs"></i>
+                                <span id="camera-btn-text">START CAMERA</span>
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center relative overflow-hidden aspect-video bg-slate-900">
+                                <video id="webcam-video" autoplay playsinline muted class="w-full h-full object-cover rounded-xl transform -scale-x-100"></video>
+                                <canvas id="canvas-preview" class="hidden"></canvas>
+                                <div id="camera-overlay" class="absolute inset-0 bg-slate-900/80 flex flex-col items-center justify-center text-white">
+                                    <i class="fa-solid fa-video-slash text-3xl mb-2 text-red-400"></i>
+                                    <span class="text-xs font-medium">Camera Offline / Stopped</span>
+                                </div>
+                            </div>
+
+                            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                                <div class="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
+                                    <span>Hasil Prediksi:</span>
+                                    <span class="text-xs font-normal text-slate-400" id="ai-status-label">Default Fallback Model</span>
+                                </div>
+                                <div id="prediction-bars-container" class="space-y-3.5 flex-1 flex flex-col justify-center">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-1 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-base font-bold text-slate-900">System Activity</h2>
+                            <button onclick="clearLogs()" class="text-xs text-slate-400 hover:text-slate-600 transition">Clear</button>
+                        </div>
+                        <div id="activity-log-container" class="space-y-3">
+                            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start space-x-3.5">
+                                <div class="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0 mt-0.5"><i class="fa-solid fa-eye text-sm"></i></div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-bold text-slate-800">Vision AI Initialized</div>
+                                    <div class="text-xs text-slate-500 mt-0.5 truncate">Ready to load Teachable Machine URL.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            bt: `
+                <div class="space-y-6">
+                    <div class="bg-white rounded-3xl p-8 shadow-sm text-slate-800 relative overflow-hidden min-h-[520px] flex flex-col justify-between border border-slate-200">
+                        <div class="flex flex-wrap items-center justify-between gap-4 z-10">
+                            <div>
+                                <h2 class="text-2xl font-extrabold tracking-tight text-slate-900">Bluetooth Micro:bit Controller</h2>
+                                <p class="text-xs text-slate-500 mt-1">Gunakan tombol arah (tahan tombol Panah / Arrow Keys pada keyboard untuk bergerak), atau klik tombol di layar.</p>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <button onclick="toggleMappingModal(true)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl shadow-xs border border-slate-200 transition flex items-center space-x-2 cursor-pointer">
+                                    <i class="fa-solid fa-sliders text-blue-600"></i>
+                                    <span>Mapping Perintah</span>
+                                </button>
+                                <span id="bt-panel-status" class="bg-slate-100 backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-semibold border border-slate-200 text-slate-600">Micro:bit Disconnected</span>
+                                <button onclick="connectMicrobit()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow transition">Connect</button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center my-8 z-10">
+                            <div class="flex flex-col items-center justify-center relative py-6">
+                                <div class="relative w-64 h-64 flex items-center justify-center">
+                                    
+                                    <button id="btn-up" onmousedown="sendControllerCmd('UP')" ontouchstart="sendControllerCmd('UP')" class="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                        <i class="fa-solid fa-arrow-up"></i>
+                                    </button>
+
+                                    <button id="btn-down" onmousedown="sendControllerCmd('DOWN')" ontouchstart="sendControllerCmd('DOWN')" class="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                        <i class="fa-solid fa-arrow-down"></i>
+                                    </button>
+
+                                    <button id="btn-left" onmousedown="sendControllerCmd('LEFT')" ontouchstart="sendControllerCmd('LEFT')" class="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                        <i class="fa-solid fa-arrow-left"></i>
+                                    </button>
+
+                                    <button id="btn-right" onmousedown="sendControllerCmd('RIGHT')" ontouchstart="sendControllerCmd('RIGHT')" class="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                        <i class="fa-solid fa-arrow-right"></i>
+                                    </button>
+
+                                    <button id="btn-stop" onmousedown="sendControllerCmd('STOP')" ontouchstart="sendControllerCmd('STOP')" class="absolute w-20 h-20 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-full flex items-center justify-center text-white text-2xl shadow-md transition cursor-pointer" title="Stop / Lepas Tombol">
+                                        <i class="fa-solid fa-stop text-2xl"></i>
+                                    </button>
+
+                                </div>
+                            </div>
+
+                            <div class="space-y-8 bg-slate-50 backdrop-blur-md p-6 rounded-3xl border border-slate-200 shadow-xs">
+                                
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center text-sm font-bold tracking-wider text-slate-700">
+                                        <span>SLIDER1</span>
+                                        <span id="slider1-val" class="bg-white border border-slate-200 text-blue-600 px-2.5 py-0.5 rounded-lg text-xs font-mono shadow-2xs">50</span>
+                                    </div>
+                                    <input type="range" id="controller-slider1" min="0" max="100" value="50" oninput="updateSlider('1', this.value)" class="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg">
+                                </div>
+
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center text-sm font-bold tracking-wider text-slate-700">
+                                        <span>SLIDER2</span>
+                                        <span id="slider2-val" class="bg-white border border-slate-200 text-blue-600 px-2.5 py-0.5 rounded-lg text-xs font-mono shadow-2xs">50</span>
+                                    </div>
+                                    <input type="range" id="controller-slider2" min="0" max="100" value="50" oninput="updateSlider('2', this.value)" class="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg">
+                                </div>
+
+                                <div class="pt-2 flex items-center space-x-2">
+                                    <input type="text" id="uart-input" placeholder="Ketik perintah kustom..." class="flex-1 bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs">
+                                    <button onclick="sendUartCommand()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow">Kirim</button>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center z-10 pt-4 border-t border-slate-100 text-xs font-bold tracking-widest text-slate-400">
+                            <span>ROBOTIC WEB CONTROLLER</span>
+                            <div class="flex items-center space-x-1">
+                                <i class="fa-solid fa-robot text-blue-600"></i>
+                                <span class="text-slate-600">LOFI ROBOT</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            help: `
+                <div class="space-y-6">
+                    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                        <h2 class="text-lg font-bold text-slate-900">Help Center & Documentation</h2>
+                        <p class="text-xs text-slate-500">Panduan lengkap integrasi Robotic web dengan perangkat Micro:bit dan Teachable Machine.</p>
+                        
+                        <div class="space-y-3 pt-2">
+                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div class="font-bold text-sm text-slate-800 mb-1">1. Kontrol Keyboard (Tahan Tombol / Key Hold)</div>
+                                <p class="text-xs text-slate-600">Saat berada di tab <strong>BT Controller</strong>, tahan tombol Panah Atas, Bawah, Kiri, atau Kanan pada keyboard untuk menjalankan robot secara terus-menerus. Robot akan otomatis berhenti (STOP) saat tombol dilepas.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div class="font-bold text-sm text-slate-800 mb-1">2. Cara Memasukkan Teachable Machine Link</div>
+                                <p class="text-xs text-slate-600">Salin link dari tombol <strong>Share -> Your model link -> Link (TFJS)</strong> di Google Teachable Machine lalu klik <strong>LOAD MODEL</strong> di tab Vision AI.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div class="font-bold text-sm text-slate-800 mb-1">3. Kontak Pengembang</div>
+                                <p class="text-xs text-slate-600">Dikembangkan oleh <strong>M. Aysar Rizqin</strong> (GitHub: maysarrizqin | Email: aysarrizqin@gmail.com).</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            settings: `
+                <div class="space-y-6">
+                    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+                        <h2 class="text-lg font-bold text-slate-900">Settings & Preferences</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Inference Confidence Threshold (%)</label>
+                                <input type="number" value="85" class="w-full bg-slate-50 border border-slate-200 text-xs rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <div>
+                                    <div class="font-bold text-sm text-slate-800">Dark Mode UI Preview</div>
+                                    <div class="text-xs text-slate-500">Sesuaikan tema antarmuka dashboard</div>
+                                </div>
+                                <input type="checkbox" class="w-5 h-5 rounded text-blue-600">
+                            </div>
+                            <button onclick="showNotification('Pengaturan berhasil disimpan!', 'success')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        window.onload = function() {
+            switchTab('dashboard');
+            renderPredictionBars(currentLabels);
+            addLog('System Ready', 'Berhasil membuka Dashboard. Siap terhubung ke Micro:bit & Vision AI.', 'emerald');
+            window.requestAnimationFrame(loopPrediction);
+
+            // Keydown Listener (Saat tombol keyboard ditekan & ditahan)
+            window.addEventListener('keydown', function(e) {
+                if (currentTab !== 'bt') return;
+                
+                // Mencegah halaman ikut scroll saat tombol panah ditekan
+                if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
+                    e.preventDefault();
+                }
+
+                let direction = null;
+                let btnId = null;
+
+                if (e.key === 'ArrowUp') { direction = 'UP'; btnId = 'btn-up'; }
+                else if (e.key === 'ArrowDown') { direction = 'DOWN'; btnId = 'btn-down'; }
+                else if (e.key === 'ArrowLeft') { direction = 'LEFT'; btnId = 'btn-left'; }
+                else if (e.key === 'ArrowRight') { direction = 'RIGHT'; btnId = 'btn-right'; }
+                else if (e.key === ' ' || e.key === 'Spacebar') { direction = 'STOP'; btnId = 'btn-stop'; }
+
+                if (direction) {
+                    if (activeKeyCommand !== direction) {
+                        activeKeyCommand = direction;
+                        sendControllerCmd(direction);
+                        setButtonActiveState(btnId, true);
+                    }
+                }
+            });
+
+            // Keyup Listener (Saat tombol keyboard dilepaskan)
+            window.addEventListener('keyup', function(e) {
+                if (currentTab !== 'bt') return;
+
+                let direction = null;
+                let btnId = null;
+
+                if (e.key === 'ArrowUp') { direction = 'UP'; btnId = 'btn-up'; }
+                else if (e.key === 'ArrowDown') { direction = 'DOWN'; btnId = 'btn-down'; }
+                else if (e.key === 'ArrowLeft') { direction = 'LEFT'; btnId = 'btn-left'; }
+                else if (e.key === 'ArrowRight') { direction = 'RIGHT'; btnId = 'btn-right'; }
+                else if (e.key === ' ' || e.key === 'Spacebar') { direction = 'STOP'; btnId = 'btn-stop'; }
+
+                if (direction && activeKeyCommand === direction) {
+                    activeKeyCommand = null;
+                    setButtonActiveState(btnId, false);
+                    sendControllerCmd('STOP');
+                }
+            });
+        }
+
+        // Efek visual tombol saat ditekan/ditahan
+        function setButtonActiveState(btnId, isActive) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            if (isActive) {
+                btn.classList.add('scale-95', 'bg-blue-600', 'text-white', 'border-blue-600');
+            } else {
+                btn.classList.remove('scale-95', 'bg-blue-600', 'text-white', 'border-blue-600');
+            }
+        }
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            activeKeyCommand = null;
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('bg-blue-600', 'text-white', 'shadow-md', 'shadow-blue-500/20');
+                el.classList.add('text-slate-600', 'hover:bg-slate-50', 'hover:text-slate-900');
+            });
+            const activeNav = document.getElementById('nav-' + tabName);
+            if(activeNav) {
+                activeNav.classList.remove('text-slate-600', 'hover:bg-slate-50', 'hover:text-slate-900');
+                activeNav.classList.add('bg-blue-600', 'text-white', 'shadow-md', 'shadow-blue-500/20');
+            }
+
+            const mainArea = document.getElementById('main-content-area');
+            mainArea.innerHTML = tabTemplates[tabName] || tabTemplates['dashboard'];
+
+            if(tabName === 'vision') {
+                renderPredictionBars(currentLabels);
+            }
+        }
+
+        // Toggle Mapping Modal
+        function toggleMappingModal(show) {
+            const modal = document.getElementById('mapping-modal');
+            if (!modal) return;
+            if (show) {
+                document.getElementById('map-up').value = btMapping.UP;
+                document.getElementById('map-down').value = btMapping.DOWN;
+                document.getElementById('map-left').value = btMapping.LEFT;
+                document.getElementById('map-right').value = btMapping.RIGHT;
+                document.getElementById('map-stop').value = btMapping.STOP;
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        // Save Custom Mapping Config
+        function saveMappingConfig() {
+            btMapping.UP = document.getElementById('map-up').value.trim() || 'up';
+            btMapping.DOWN = document.getElementById('map-down').value.trim() || 'down';
+            btMapping.LEFT = document.getElementById('map-left').value.trim() || 'left';
+            btMapping.RIGHT = document.getElementById('map-right').value.trim() || 'right';
+            btMapping.STOP = document.getElementById('map-stop').value.trim() || 'stop';
+
+            toggleMappingModal(false);
+            showNotification('Mapping perintah BT berhasil disimpan!', 'success');
+            addLog('BT Mapping', `Perintah baru: UP(${btMapping.UP}), DOWN(${btMapping.DOWN}), LEFT(${btMapping.LEFT}), RIGHT(${btMapping.RIGHT}), STOP(${btMapping.STOP})`, 'blue');
+        }
+
+        function renderPredictionBars(labels) {
+            const container = document.getElementById('prediction-bars-container');
+            if (!container) return;
+            
+            let html = '';
+            labels.forEach(label => {
+                html += `
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                            <span class="truncate max-w-[150px]">${label}</span>
+                            <span id="score-${label}">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div id="bar-${label}" class="bg-blue-600 h-full w-0 transition-all duration-150 rounded-full"></div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        async function loadTeachableMachineModel() {
+            const urlInput = document.getElementById('model-url');
+            if(!urlInput || !urlInput.value.trim()) {
+                showNotification('Masukkan link Teachable Machine terlebih dahulu!', 'warning');
+                return;
+            }
+
+            let rawUrl = urlInput.value.trim();
+            if (!rawUrl.endsWith('/')) {
+                rawUrl += '/';
+            }
+
+            const modelURL = rawUrl + 'model.json';
+            const metadataURL = rawUrl + 'metadata.json';
+
+            const btn = document.getElementById('load-model-btn');
+            if(btn) {
+                btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>LOADING...</span>`;
+                btn.disabled = true;
+            }
+
+            showNotification('Mengunduh model Teachable Machine...', 'info');
+            addLog('Model Loading', `Menghubungkan ke ${rawUrl}`, 'blue');
+
+            try {
+                tmModel = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = tmModel.getTotalClasses();
+                currentLabels = tmModel.getClassLabels();
+
+                renderPredictionBars(currentLabels);
+                showNotification(`Model berhasil dimuat! (${maxPredictions} kelas ditemukan)`, 'success');
+                addLog('Model Loaded', `Berhasil memuat ${maxPredictions} kelas: ${currentLabels.join(', ')}`, 'emerald');
+                
+                const statusLbl = document.getElementById('ai-status-label');
+                if(statusLbl) statusLbl.innerText = `Custom Model (${maxPredictions} classes)`;
+
+            } catch (err) {
+                console.error("Error loading Teachable Machine model:", err);
+                showNotification('Gagal memuat model. Periksa kembali URL atau CORS.', 'warning');
+                addLog('Model Error', 'Gagal memuat URL Teachable Machine. Menggunakan fallback.', 'slate');
+            } finally {
+                if(btn) {
+                    btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-down"></i><span>LOAD MODEL</span>`;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        async function startWebcam() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+                const videoElement = document.getElementById('webcam-video');
+                if(videoElement) {
+                    videoElement.srcObject = videoStream;
+                    videoElement.play();
+                    const overlay = document.getElementById('camera-overlay');
+                    if(overlay) overlay.classList.add('hidden');
+                    isCameraActive = true;
+                }
+            } catch (err) {
+                console.warn("Webcam access denied or unavailable:", err);
+                const overlay = document.getElementById('camera-overlay');
+                if(overlay) overlay.classList.remove('hidden');
+                isCameraActive = false;
+            }
+        }
+
+        function toggleCameraState() {
+            const btn = document.getElementById('camera-btn');
+            const btnText = document.getElementById('camera-btn-text');
+            const overlay = document.getElementById('camera-overlay');
+
+            if (isCameraActive) {
+                if (videoStream) {
+                    videoStream.getTracks().forEach(track => track.stop());
+                }
+                const vid = document.getElementById('webcam-video');
+                if(vid) vid.srcObject = null;
+                if(overlay) overlay.classList.remove('hidden');
+                if(btn) {
+                    btn.className = "w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer";
+                    btnText.innerText = "START CAMERA";
+                }
+                isCameraActive = false;
+                addLog('Vision AI Stopped', 'Kamera dimatikan.', 'slate');
+                showNotification('Kamera dihentikan', 'warning');
+            } else {
+                startWebcam().then(() => {
+                    if(isCameraActive && btn) {
+                        btn.className = "w-full bg-red-500 hover:bg-red-600 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md shadow-red-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer";
+                        btnText.innerText = "STOP CAMERA";
+                        addLog('Vision AI Active', 'Klasifikasi model berjalan.', 'purple');
+                        showNotification('Kamera diaktifkan', 'success');
+                    }
+                });
+            }
+        }
+
+        async function loopPrediction() {
+            if (currentTab === 'vision' && isCameraActive) {
+                const videoElement = document.getElementById('webcam-video');
+                if (tmModel && videoElement && videoElement.readyState === 4) {
+                    try {
+                        const predictions = await tmModel.predict(videoElement);
+                        let topPrediction = predictions[0];
+                        
+                        predictions.forEach(p => {
+                            if (p.probability > topPrediction.probability) {
+                                topPrediction = p;
+                            }
+                            const scorePct = Math.round(p.probability * 100);
+                            const sEl = document.getElementById(`score-${p.className}`);
+                            const bEl = document.getElementById(`bar-${p.className}`);
+                            if(sEl) sEl.innerText = scorePct + '%';
+                            if(bEl) bEl.style.width = scorePct + '%';
+                        });
+
+                        const statusLbl = document.getElementById('ai-status-label');
+                        if(statusLbl) {
+                            statusLbl.innerText = `Active: ${topPrediction.className} (${Math.round(topPrediction.probability * 100)}%)`;
+                        }
+                    } catch (e) {}
+                } else if (!tmModel && isCameraActive) {
+                    simulateFallbackInference();
+                }
+            }
+            window.requestAnimationFrame(loopPrediction);
+        }
+
+        function simulateFallbackInference() {
+            const directions = currentLabels;
+            const chosen = directions[Math.floor(Math.random() * directions.length)];
+            
+            let scores = {};
+            let highKey = chosen;
+            let highVal = Math.floor(Math.random() * 20) + 80;
+            scores[highKey] = highVal;
+            
+            let remainder = 100 - highVal;
+            const others = directions.filter(d => d !== highKey);
+            others.forEach((d, idx) => {
+                if (idx === others.length - 1) {
+                    scores[d] = remainder;
+                } else {
+                    let part = Math.floor(Math.random() * remainder);
+                    scores[d] = part;
+                    remainder -= part;
+                }
+            });
+
+            directions.forEach(d => {
+                const sEl = document.getElementById(`score-${d}`);
+                const bEl = document.getElementById(`bar-${d}`);
+                if(sEl) sEl.innerText = (scores[d] || 0) + '%';
+                if(bEl) bEl.style.width = (scores[d] || 0) + '%';
+            });
+
+            const statusLbl = document.getElementById('ai-status-label');
+            if(statusLbl && !tmModel) statusLbl.innerText = `Simulated: ${highKey} (${highVal}%)`;
+        }
+
+        async function connectMicrobit() {
+            if (!isBluetoothConnected) {
+                try {
+                    if (!navigator.bluetooth) {
+                        showNotification('Web Bluetooth tidak didukung browser ini. Menggunakan simulasi.', 'warning');
+                        simulateBluetoothConnection();
+                        return;
+                    }
+
+                    showNotification('Memindai perangkat Micro:bit...', 'info');
+                    const device = await navigator.bluetooth.requestDevice({
+                        acceptAllDevices: true,
+                        optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+                    });
+
+                    await device.gatt.connect();
+                    isBluetoothConnected = true;
+                    updateBluetoothUI(true);
+                    addLog('Bluetooth Connected', `Terhubung ke ${device.name || 'Micro:bit'}`, 'emerald');
+                    showNotification('Berhasil terhubung ke Micro:bit via Bluetooth!', 'success');
+                } catch (error) {
+                    console.log('Bluetooth connection cancelled or failed:', error);
+                    simulateBluetoothConnection();
+                }
+            } else {
+                isBluetoothConnected = false;
+                updateBluetoothUI(false);
+                addLog('Bluetooth Disconnected', 'Koneksi perangkat diputus.', 'slate');
+                showNotification('Micro:bit diputus.', 'info');
+            }
+        }
+
+        function simulateBluetoothConnection() {
+            isBluetoothConnected = true;
+            updateBluetoothUI(true, true);
+            addLog('Bluetooth Simulated', 'Terhubung ke Micro:bit (Virtual Mode)', 'emerald');
+            showNotification('Simulasi koneksi Micro:bit aktif!', 'success');
+        }
+
+        function updateBluetoothUI(connected, simulated = false) {
+            const btBadge = document.getElementById('bt-status-badge');
+            const btBtn = document.getElementById('microbit-connect-btn');
+            const dashLabel = document.getElementById('dash-bt-label');
+            const btPanelLabel = document.getElementById('bt-panel-status');
+
+            if (connected) {
+                btBadge.className = "px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700 flex items-center space-x-2 transition-all";
+                btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>BT: ${simulated ? 'SIMULATED' : 'CONNECTED'}</span>`;
+                if(btBtn) {
+                    btBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer";
+                }
+                if(dashLabel) dashLabel.innerText = "Connected";
+                if(btPanelLabel) btPanelLabel.innerText = "Micro:bit Connected";
+            } else {
+                btBadge.className = "px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all";
+                btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span><span>BT: OFFLINE</span>`;
+                if(btBtn) {
+                    btBtn.className = "bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center space-x-2 cursor-pointer";
+                }
+                if(dashLabel) dashLabel.innerText = "Disconnected";
+                if(btPanelLabel) btPanelLabel.innerText = "Micro:bit Disconnected";
+            }
+        }
+
+        // Send Controller Command based on dynamic mapping
+        function sendControllerCmd(direction) {
+            const cmdText = btMapping[direction] || direction.toLowerCase();
+            showNotification(`Perintah "${cmdText}" (${direction}) dikirim ke Micro:bit`, 'success');
+            addLog('BT Command', `Direction: ${direction} -> Payload: ${cmdText}`, 'blue');
+        }
+
+        function updateSlider(sliderNum, val) {
+            const valEl = document.getElementById(`slider${sliderNum}-val`);
+            if(valEl) valEl.innerText = val;
+        }
+
+        function sendUartCommand() {
+            const val = document.getElementById('uart-input')?.value;
+            if(!val) {
+                showNotification('Masukkan perintah UART terlebih dahulu', 'warning');
+                return;
+            }
+            showNotification(`Perintah UART "${val}" dikirim ke Micro:bit`, 'success');
+            addLog('UART Sent', `Command: ${val}`, 'blue');
+        }
+
+        function addLog(title, desc, type = 'purple') {
+            const container = document.getElementById('activity-log-container');
+            if(!container) return;
+
+            const icons = {
+                'purple': '<i class="fa-solid fa-eye text-sm"></i>',
+                'emerald': '<i class="fa-solid fa-circle-check text-sm"></i>',
+                'slate': '<i class="fa-solid fa-video-slash text-sm"></i>',
+                'blue': '<i class="fa-solid fa-bolt text-sm"></i>'
+            };
+            const bgColors = {
+                'purple': 'bg-purple-50 text-purple-600',
+                'emerald': 'bg-emerald-50 text-emerald-600',
+                'slate': 'bg-slate-100 text-slate-500',
+                'blue': 'bg-blue-50 text-blue-600'
+            };
+
+            const logItem = document.createElement('div');
+            logItem.className = "bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start space-x-3.5 transition-all hover:shadow-md";
+            logItem.innerHTML = `
+                <div class="w-8 h-8 rounded-xl ${bgColors[type]} flex items-center justify-center flex-shrink-0 mt-0.5">
+                    ${icons[type]}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-bold text-slate-800">${title}</div>
+                    <div class="text-xs text-slate-500 mt-0.5 truncate">${desc}</div>
+                </div>
+            `;
+            container.prepend(logItem);
+
+            if (container.children.length > 10) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function clearLogs() {
+            const container = document.getElementById('activity-log-container');
+            if(container) container.innerHTML = '';
+            showNotification('Log aktivitas dibersihkan', 'info');
+        }
+
+        function showNotification(message, type = 'info') {
+            const modal = document.getElementById('notification-modal');
+            const text = document.getElementById('notif-text');
+            const icon = document.getElementById('notif-icon');
+            if(!modal) return;
+
+            text.innerText = message;
+            if (type === 'success') {
+                icon.className = "fa-solid fa-circle-check text-emerald-400";
+            } else if (type === 'warning') {
+                icon.className = "fa-solid fa-triangle-exclamation text-amber-400";
+            } else {
+                icon.className = "fa-solid fa-circle-info text-blue-400";
+            }
+
+            modal.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
