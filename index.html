@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robotic web - IoT & Vision AI Dashboard</title>
+    <title>TinyBit Robot - IoT & Vision AI Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -152,6 +152,14 @@
                     <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">STOP (Lepas Semua Tombol)</label>
                     <input type="text" id="map-stop" value="stop" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
                 </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">OPEN (Buka Gripper)</label>
+                    <input type="text" id="map-open" value="open" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">CLOSE (Tutup Gripper)</label>
+                    <input type="text" id="map-close" value="close" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                </div>
             </div>
 
             <div class="pt-2">
@@ -180,7 +188,7 @@
         let tmModel = null;
         let maxPredictions = 0;
         let isModelLoading = false;
-        let currentLabels = ['stop', 'up', 'down', 'left', 'right'];
+        let currentLabels = ['stop', 'up', 'down', 'left', 'right', 'open', 'close'];
 
         // Custom BT Command Mapping State
         let btMapping = {
@@ -188,11 +196,33 @@
             DOWN: 'down',
             LEFT: 'left',
             RIGHT: 'right',
-            STOP: 'stop'
+            STOP: 'stop',
+            OPEN: 'open',
+            CLOSE: 'close'
         };
 
         // Active key hold tracking to prevent duplicate spamming
         let activeKeyCommand = null;
+
+        // Bluetooth (Nordic UART service used by micro:bit)
+        const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const UART_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // web -> micro:bit (write)
+        const UART_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // micro:bit -> web (notify)
+        let bleDevice = null;
+        let bleRx = null;
+        let bleTx = null;
+        let isSimulated = false;
+        let writeQueue = Promise.resolve();
+        let showAllDevices = false;
+        let isConnecting = false;
+
+        // Vision auto-send + settings state
+        let autoSendEnabled = true;
+        let confidenceThreshold = 85;
+        let lastVisionLabel = null;
+        let lastVisionSent = 0;
+        let heldControl = null;
+        let lastSliderSent = {};
 
         // Templates for each tab
         const tabTemplates = {
@@ -327,7 +357,7 @@
                         <div class="flex flex-wrap items-center justify-between gap-4 z-10">
                             <div>
                                 <h2 class="text-2xl font-extrabold tracking-tight text-slate-900">Bluetooth Micro:bit Controller</h2>
-                                <p class="text-xs text-slate-500 mt-1">Gunakan tombol arah (tahan tombol Panah / Arrow Keys pada keyboard untuk bergerak), atau klik tombol di layar.</p>
+                                <p class="text-xs text-slate-500 mt-1">Gunakan tombol arah (tahan tombol Panah pada keyboard), tombol O/C untuk Open/Close, atau klik tombol di layar.</p>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <button onclick="toggleMappingModal(true)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl shadow-xs border border-slate-200 transition flex items-center space-x-2 cursor-pointer">
@@ -335,32 +365,45 @@
                                     <span>Mapping Perintah</span>
                                 </button>
                                 <span id="bt-panel-status" class="bg-slate-100 backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-semibold border border-slate-200 text-slate-600">Micro:bit Disconnected</span>
-                                <button onclick="connectMicrobit()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow transition">Connect</button>
+                                <button onclick="connectMicrobit()" id="bt-panel-connect-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow transition">Connect</button>
+                                <button onclick="startDemoMode()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs px-3 py-2 rounded-xl border border-slate-200 transition" title="Tanpa perangkat, hanya untuk uji tampilan">Demo</button>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center my-8 z-10">
                             <div class="flex flex-col items-center justify-center relative py-6">
-                                <div class="relative w-64 h-64 flex items-center justify-center">
+                                <div class="relative w-80 h-72 flex items-center justify-center">
                                     
-                                    <button id="btn-up" onmousedown="sendControllerCmd('UP')" ontouchstart="sendControllerCmd('UP')" class="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                    <button id="btn-up" style="touch-action:none" onpointerdown="pressControl('UP')" onpointerup="releaseControl('UP')" onpointerleave="releaseControl('UP')" onpointercancel="releaseControl('UP')" class="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
                                         <i class="fa-solid fa-arrow-up"></i>
                                     </button>
 
-                                    <button id="btn-down" onmousedown="sendControllerCmd('DOWN')" ontouchstart="sendControllerCmd('DOWN')" class="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                    <button id="btn-down" style="touch-action:none" onpointerdown="pressControl('DOWN')" onpointerup="releaseControl('DOWN')" onpointerleave="releaseControl('DOWN')" onpointercancel="releaseControl('DOWN')" class="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
                                         <i class="fa-solid fa-arrow-down"></i>
                                     </button>
 
-                                    <button id="btn-left" onmousedown="sendControllerCmd('LEFT')" ontouchstart="sendControllerCmd('LEFT')" class="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                    <button id="btn-left" style="touch-action:none" onpointerdown="pressControl('LEFT')" onpointerup="releaseControl('LEFT')" onpointerleave="releaseControl('LEFT')" onpointercancel="releaseControl('LEFT')" class="absolute left-4 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
                                         <i class="fa-solid fa-arrow-left"></i>
                                     </button>
 
-                                    <button id="btn-right" onmousedown="sendControllerCmd('RIGHT')" ontouchstart="sendControllerCmd('RIGHT')" class="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
+                                    <button id="btn-right" style="touch-action:none" onpointerdown="pressControl('RIGHT')" onpointerup="releaseControl('RIGHT')" onpointerleave="releaseControl('RIGHT')" onpointercancel="releaseControl('RIGHT')" class="absolute right-4 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
                                         <i class="fa-solid fa-arrow-right"></i>
                                     </button>
 
-                                    <button id="btn-stop" onmousedown="sendControllerCmd('STOP')" ontouchstart="sendControllerCmd('STOP')" class="absolute w-20 h-20 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-full flex items-center justify-center text-white text-2xl shadow-md transition cursor-pointer" title="Stop / Lepas Tombol">
-                                        <i class="fa-solid fa-stop text-2xl"></i>
+                                    <button id="btn-stop" style="touch-action:none" onpointerdown="pressControl('STOP')" class="absolute w-16 h-16 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-full flex items-center justify-center text-white text-2xl shadow-md transition cursor-pointer" title="Stop / Lepas Tombol">
+                                        <i class="fa-solid fa-stop text-xl"></i>
+                                    </button>
+
+                                    <!-- Tombol OPEN -->
+                                    <button id="btn-open" onclick="sendControllerCmd('OPEN')" class="absolute top-2 left-0 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
+                                        <i class="fa-solid fa-door-open"></i>
+                                        <span>OPEN</span>
+                                    </button>
+
+                                    <!-- Tombol CLOSE -->
+                                    <button id="btn-close" onclick="sendControllerCmd('CLOSE')" class="absolute top-2 right-0 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
+                                        <i class="fa-solid fa-door-closed"></i>
+                                        <span>CLOSE</span>
                                     </button>
 
                                 </div>
@@ -411,14 +454,50 @@
                         <div class="space-y-3 pt-2">
                             <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                 <div class="font-bold text-sm text-slate-800 mb-1">1. Kontrol Keyboard (Tahan Tombol / Key Hold)</div>
-                                <p class="text-xs text-slate-600">Saat berada di tab <strong>BT Controller</strong>, tahan tombol Panah Atas, Bawah, Kiri, atau Kanan pada keyboard untuk menjalankan robot secara terus-menerus. Robot akan otomatis berhenti (STOP) saat tombol dilepas.</p>
+                                <p class="text-xs text-slate-600">Saat berada di tab <strong>BT Controller</strong>, tahan tombol Panah Atas, Bawah, Kiri, atau Kanan pada keyboard untuk bergerak. Tekan <strong>O</strong> untuk Open dan <strong>C</strong> untuk Close. Robot akan otomatis berhenti (STOP) saat tombol dilepas.</p>
                             </div>
                             <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                 <div class="font-bold text-sm text-slate-800 mb-1">2. Cara Memasukkan Teachable Machine Link</div>
                                 <p class="text-xs text-slate-600">Salin link dari tombol <strong>Share -> Your model link -> Link (TFJS)</strong> di Google Teachable Machine lalu klik <strong>LOAD MODEL</strong> di tab Vision AI.</p>
                             </div>
                             <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div class="font-bold text-sm text-slate-800 mb-1">3. Kontak Pengembang</div>
+                                <div class="font-bold text-sm text-slate-800 mb-1">3. Menghubungkan Tiny:bit (Bluetooth)</div>
+                                <ol class="text-xs text-slate-600 list-decimal ml-4 space-y-1">
+                                    <li>Buka website ini di <strong>Chrome atau Edge</strong> (komputer/Android). Safari, Firefox, dan iPhone tidak mendukung Web Bluetooth.</li>
+                                    <li>Di MakeCode: tambahkan extension <strong>Bluetooth</strong> dan <strong>Tinybit</strong>, hapus extension <strong>Radio</strong> (tidak bisa dipakai bersamaan).</li>
+                                    <li>Project Settings (ikon gerigi) &rarr; <strong>No Pairing Required: Yes</strong>.</li>
+                                    <li>Download program di bawah ke Micro:bit, nyalakan Tiny:bit, lalu klik tombol <strong>MICRO:BIT</strong> dan pilih perangkat "BBC micro:bit [xxxxx]".</li>
+                                    <li>Jika gagal: hapus pairing lama di Bluetooth HP/PC, putuskan koneksi dari aplikasi lain, lalu restart Micro:bit.</li>
+                                </ol>
+                                <div class="text-xs font-semibold text-slate-700 mt-3 mb-1">Contoh program MakeCode (JavaScript):</div>
+                                <pre class="text-[11px] leading-relaxed bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto font-mono">bluetooth.startUartService()
+bluetooth.onBluetoothConnected(function () {
+    basic.showIcon(IconNames.Yes)
+})
+bluetooth.onBluetoothDisconnected(function () {
+    Tinybit.CarCtrl(Tinybit.CarState.Car_Stop)
+    basic.showIcon(IconNames.No)
+})
+bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () {
+    let cmd = bluetooth.uartReadUntil(serial.delimiters(Delimiters.NewLine))
+    if (cmd == "up") {
+        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_Run, 100)
+    } else if (cmd == "down") {
+        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_Back, 100)
+    } else if (cmd == "left") {
+        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_SpinLeft, 100)
+    } else if (cmd == "right") {
+        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_SpinRight, 100)
+    } else if (cmd == "stop") {
+        Tinybit.CarCtrl(Tinybit.CarState.Car_Stop)
+    }
+    // "open" / "close" / "slider1:50" / "slider2:50": tambahkan aksi sesuai perangkat Anda
+})
+basic.showIcon(IconNames.Heart)</pre>
+                                <p class="text-[11px] text-slate-500 mt-2">Website mengirim setiap perintah sebagai teks diakhiri baris baru (contoh: <code>up</code>). Teks bisa diubah di <strong>Mapping Perintah</strong>. Nama blok Tinybit dapat sedikit berbeda antar versi extension.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div class="font-bold text-sm text-slate-800 mb-1">4. Kontak Pengembang</div>
                                 <p class="text-xs text-slate-600">Dikembangkan oleh <strong>M. Aysar Rizqin</strong> (GitHub: maysarrizqin | Email: aysarrizqin@gmail.com).</p>
                             </div>
                         </div>
@@ -432,7 +511,7 @@
                         <div class="space-y-4">
                             <div>
                                 <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Inference Confidence Threshold (%)</label>
-                                <input type="number" value="85" class="w-full bg-slate-50 border border-slate-200 text-xs rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="number" id="setting-threshold" min="1" max="100" value="85" class="w-full bg-slate-50 border border-slate-200 text-xs rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
                                 <div>
@@ -441,7 +520,14 @@
                                 </div>
                                 <input type="checkbox" class="w-5 h-5 rounded text-blue-600">
                             </div>
-                            <button onclick="showNotification('Pengaturan berhasil disimpan!', 'success')" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition">Save Changes</button>
+                            <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <div>
+                                    <div class="font-bold text-sm text-slate-800">Tampilkan semua perangkat Bluetooth</div>
+                                    <div class="text-xs text-slate-500">Aktifkan jika Micro:bit tidak muncul di daftar pemindaian</div>
+                                </div>
+                                <input type="checkbox" id="setting-show-all" class="w-5 h-5 rounded text-blue-600">
+                            </div>
+                            <button onclick="saveSettings()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition">Save Changes</button>
                         </div>
                     </div>
                 </div>
@@ -454,11 +540,10 @@
             addLog('System Ready', 'Berhasil membuka Dashboard. Siap terhubung ke Micro:bit & Vision AI.', 'emerald');
             window.requestAnimationFrame(loopPrediction);
 
-            // Keydown Listener (Saat tombol keyboard ditekan & ditahan)
+            // Keydown Listener
             window.addEventListener('keydown', function(e) {
                 if (currentTab !== 'bt') return;
                 
-                // Mencegah halaman ikut scroll saat tombol panah ditekan
                 if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
                     e.preventDefault();
                 }
@@ -471,6 +556,8 @@
                 else if (e.key === 'ArrowLeft') { direction = 'LEFT'; btnId = 'btn-left'; }
                 else if (e.key === 'ArrowRight') { direction = 'RIGHT'; btnId = 'btn-right'; }
                 else if (e.key === ' ' || e.key === 'Spacebar') { direction = 'STOP'; btnId = 'btn-stop'; }
+                else if (e.key === 'o' || e.key === 'O') { direction = 'OPEN'; btnId = 'btn-open'; }
+                else if (e.key === 'c' || e.key === 'C') { direction = 'CLOSE'; btnId = 'btn-close'; }
 
                 if (direction) {
                     if (activeKeyCommand !== direction) {
@@ -481,7 +568,7 @@
                 }
             });
 
-            // Keyup Listener (Saat tombol keyboard dilepaskan)
+            // Keyup Listener
             window.addEventListener('keyup', function(e) {
                 if (currentTab !== 'bt') return;
 
@@ -493,27 +580,34 @@
                 else if (e.key === 'ArrowLeft') { direction = 'LEFT'; btnId = 'btn-left'; }
                 else if (e.key === 'ArrowRight') { direction = 'RIGHT'; btnId = 'btn-right'; }
                 else if (e.key === ' ' || e.key === 'Spacebar') { direction = 'STOP'; btnId = 'btn-stop'; }
+                else if (e.key === 'o' || e.key === 'O') { direction = 'OPEN'; btnId = 'btn-open'; }
+                else if (e.key === 'c' || e.key === 'C') { direction = 'CLOSE'; btnId = 'btn-close'; }
 
                 if (direction && activeKeyCommand === direction) {
                     activeKeyCommand = null;
                     setButtonActiveState(btnId, false);
-                    sendControllerCmd('STOP');
+                    if (['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(direction)) {
+                        sendControllerCmd('STOP');
+                    }
                 }
             });
         }
 
-        // Efek visual tombol saat ditekan/ditahan
         function setButtonActiveState(btnId, isActive) {
             const btn = document.getElementById(btnId);
             if (!btn) return;
             if (isActive) {
-                btn.classList.add('scale-95', 'bg-blue-600', 'text-white', 'border-blue-600');
+                btn.classList.add('scale-95', 'opacity-85');
             } else {
-                btn.classList.remove('scale-95', 'bg-blue-600', 'text-white', 'border-blue-600');
+                btn.classList.remove('scale-95', 'opacity-85');
             }
         }
 
         function switchTab(tabName) {
+            if (lastVisionLabel && lastVisionLabel !== 'STOP' && tabName !== 'vision' && isBluetoothConnected) {
+                sendControllerCmd('STOP');
+            }
+            lastVisionLabel = null;
             currentTab = tabName;
             activeKeyCommand = null;
             document.querySelectorAll('.nav-item').forEach(el => {
@@ -531,10 +625,18 @@
 
             if(tabName === 'vision') {
                 renderPredictionBars(currentLabels);
+                const tgl = document.getElementById('auto-send-toggle');
+                if (tgl) tgl.checked = autoSendEnabled;
             }
+            if(tabName === 'settings') {
+                const th = document.getElementById('setting-threshold');
+                if (th) th.value = confidenceThreshold;
+                const sa = document.getElementById('setting-show-all');
+                if (sa) sa.checked = showAllDevices;
+            }
+            updateBluetoothUI(isBluetoothConnected, isSimulated);
         }
 
-        // Toggle Mapping Modal
         function toggleMappingModal(show) {
             const modal = document.getElementById('mapping-modal');
             if (!modal) return;
@@ -544,23 +646,26 @@
                 document.getElementById('map-left').value = btMapping.LEFT;
                 document.getElementById('map-right').value = btMapping.RIGHT;
                 document.getElementById('map-stop').value = btMapping.STOP;
+                document.getElementById('map-open').value = btMapping.OPEN || 'open';
+                document.getElementById('map-close').value = btMapping.CLOSE || 'close';
                 modal.classList.remove('hidden');
             } else {
                 modal.classList.add('hidden');
             }
         }
 
-        // Save Custom Mapping Config
         function saveMappingConfig() {
             btMapping.UP = document.getElementById('map-up').value.trim() || 'up';
             btMapping.DOWN = document.getElementById('map-down').value.trim() || 'down';
             btMapping.LEFT = document.getElementById('map-left').value.trim() || 'left';
             btMapping.RIGHT = document.getElementById('map-right').value.trim() || 'right';
             btMapping.STOP = document.getElementById('map-stop').value.trim() || 'stop';
+            btMapping.OPEN = document.getElementById('map-open').value.trim() || 'open';
+            btMapping.CLOSE = document.getElementById('map-close').value.trim() || 'close';
 
             toggleMappingModal(false);
             showNotification('Mapping perintah BT berhasil disimpan!', 'success');
-            addLog('BT Mapping', `Perintah baru: UP(${btMapping.UP}), DOWN(${btMapping.DOWN}), LEFT(${btMapping.LEFT}), RIGHT(${btMapping.RIGHT}), STOP(${btMapping.STOP})`, 'blue');
+            addLog('BT Mapping', `Perintah baru: UP(${btMapping.UP}), DOWN(${btMapping.DOWN}), LEFT(${btMapping.LEFT}), RIGHT(${btMapping.RIGHT}), STOP(${btMapping.STOP}), OPEN(${btMapping.OPEN}), CLOSE(${btMapping.CLOSE})`, 'blue');
         }
 
         function renderPredictionBars(labels) {
@@ -669,6 +774,8 @@
                 }
                 isCameraActive = false;
                 addLog('Vision AI Stopped', 'Kamera dimatikan.', 'slate');
+                if (lastVisionLabel && lastVisionLabel !== 'STOP') sendControllerCmd('STOP');
+                lastVisionLabel = null;
                 showNotification('Kamera dihentikan', 'warning');
             } else {
                 startWebcam().then(() => {
@@ -700,6 +807,8 @@
                             if(sEl) sEl.innerText = scorePct + '%';
                             if(bEl) bEl.style.width = scorePct + '%';
                         });
+
+                        handleVisionAutoSend(topPrediction);
 
                         const statusLbl = document.getElementById('ai-status-label');
                         if(statusLbl) {
@@ -745,90 +854,257 @@
             if(statusLbl && !tmModel) statusLbl.innerText = `Simulated: ${highKey} (${highVal}%)`;
         }
 
-        async function connectMicrobit() {
-            if (!isBluetoothConnected) {
+        function describeBleError(err) {
+            const name = err && err.name ? err.name : 'Error';
+            const msg = (err && err.message) ? err.message : String(err);
+            if (name === 'NotFoundError' && /cancel/i.test(msg)) {
+                return 'Pemilihan perangkat dibatalkan.';
+            }
+            if (name === 'NotFoundError' && /service/i.test(msg)) {
+                return 'Micro:bit terhubung tetapi tidak punya Bluetooth UART Service. Pastikan program MakeCode berisi blok "bluetooth start UART service" (lihat Help Center).';
+            }
+            if (name === 'NotFoundError') {
+                return 'Tidak ada Micro:bit yang ditemukan. Nyalakan Tiny:bit, pastikan program Bluetooth sedang berjalan, dan tidak sedang terhubung ke aplikasi/HP lain. Jika perlu, aktifkan "Tampilkan semua perangkat" di Settings.';
+            }
+            if (name === 'SecurityError') {
+                return 'Akses Bluetooth diblokir. Buka halaman lewat HTTPS atau file lokal di Chrome/Edge (bukan di dalam iframe/preview).';
+            }
+            if (name === 'NetworkError') {
+                return 'Gagal tersambung (GATT). Di MakeCode aktifkan Project Settings > "No Pairing Required: Yes", hapus pairing lama "BBC micro:bit" di pengaturan Bluetooth perangkat, lalu restart Micro:bit.';
+            }
+            return name + ': ' + msg;
+        }
+
+        function resetBleState() {
+            bleRx = null;
+            bleTx = null;
+            isBluetoothConnected = false;
+            isSimulated = false;
+            lastVisionLabel = null;
+            updateBluetoothUI(false);
+        }
+
+        function onBleDisconnected() {
+            if (!isBluetoothConnected) return;
+            resetBleState();
+            addLog('Bluetooth Disconnected', 'Koneksi ke Micro:bit terputus.', 'slate');
+            showNotification('Koneksi Micro:bit terputus.', 'warning');
+        }
+
+        function onBleData(event) {
+            const text = new TextDecoder().decode(event.target.value).trim();
+            if (text) addLog('Micro:bit', 'Pesan masuk: ' + text, 'emerald');
+        }
+
+        async function connectWithRetry(device, attempts = 3) {
+            let lastErr;
+            for (let i = 0; i < attempts; i++) {
                 try {
-                    if (!navigator.bluetooth) {
-                        showNotification('Web Bluetooth tidak didukung browser ini. Menggunakan simulasi.', 'warning');
-                        simulateBluetoothConnection();
-                        return;
-                    }
-
-                    showNotification('Memindai perangkat Micro:bit...', 'info');
-                    const device = await navigator.bluetooth.requestDevice({
-                        acceptAllDevices: true,
-                        optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
-                    });
-
-                    await device.gatt.connect();
-                    isBluetoothConnected = true;
-                    updateBluetoothUI(true);
-                    addLog('Bluetooth Connected', `Terhubung ke ${device.name || 'Micro:bit'}`, 'emerald');
-                    showNotification('Berhasil terhubung ke Micro:bit via Bluetooth!', 'success');
-                } catch (error) {
-                    console.log('Bluetooth connection cancelled or failed:', error);
-                    simulateBluetoothConnection();
+                    return await device.gatt.connect();
+                } catch (e) {
+                    lastErr = e;
+                    await new Promise(r => setTimeout(r, 600));
                 }
-            } else {
-                isBluetoothConnected = false;
-                updateBluetoothUI(false);
+            }
+            throw lastErr;
+        }
+
+        async function connectMicrobit() {
+            if (isConnecting) return;
+
+            // Toggle: disconnect if already connected
+            if (isBluetoothConnected) {
+                if (heldControl) { heldControl = null; }
+                if (isSimulated) {
+                    resetBleState();
+                } else {
+                    try { await sendToMicrobit(btMapping.STOP, true); } catch (e) {}
+                    const dev = bleDevice;
+                    resetBleState();
+                    if (dev && dev.gatt && dev.gatt.connected) dev.gatt.disconnect();
+                }
                 addLog('Bluetooth Disconnected', 'Koneksi perangkat diputus.', 'slate');
                 showNotification('Micro:bit diputus.', 'info');
+                return;
+            }
+
+            if (!navigator.bluetooth) {
+                addLog('Bluetooth Error', 'Browser tidak mendukung Web Bluetooth.', 'slate');
+                showNotification('Browser ini tidak mendukung Web Bluetooth. Gunakan Chrome atau Edge (bukan Safari/Firefox/iPhone).', 'warning');
+                return;
+            }
+
+            isConnecting = true;
+            try {
+                showNotification('Memindai perangkat Micro:bit...', 'info');
+                const options = showAllDevices
+                    ? { acceptAllDevices: true, optionalServices: [UART_SERVICE] }
+                    : { filters: [{ namePrefix: 'BBC micro:bit' }, { namePrefix: 'micro:bit' }], optionalServices: [UART_SERVICE] };
+
+                bleDevice = await navigator.bluetooth.requestDevice(options);
+                bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+
+                showNotification('Menghubungkan ke ' + (bleDevice.name || 'Micro:bit') + '...', 'info');
+                const server = await connectWithRetry(bleDevice);
+                const service = await server.getPrimaryService(UART_SERVICE);
+                bleRx = await service.getCharacteristic(UART_RX_CHAR);
+                try {
+                    bleTx = await service.getCharacteristic(UART_TX_CHAR);
+                    await bleTx.startNotifications();
+                    bleTx.addEventListener('characteristicvaluechanged', onBleData);
+                } catch (e) {
+                    console.warn('Notifikasi UART tidak aktif (opsional):', e);
+                }
+
+                isBluetoothConnected = true;
+                isSimulated = false;
+                updateBluetoothUI(true, false);
+                addLog('Bluetooth Connected', 'Terhubung ke ' + (bleDevice.name || 'Micro:bit'), 'emerald');
+                showNotification('Berhasil terhubung ke Micro:bit via Bluetooth!', 'success');
+            } catch (error) {
+                console.error('Bluetooth connection failed:', error);
+                if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+                resetBleState();
+                const reason = describeBleError(error);
+                addLog('Bluetooth Error', reason, 'slate');
+                showNotification(reason, 'warning');
+            } finally {
+                isConnecting = false;
             }
         }
 
-        function simulateBluetoothConnection() {
+        function startDemoMode() {
+            if (isBluetoothConnected) return;
             isBluetoothConnected = true;
+            isSimulated = true;
             updateBluetoothUI(true, true);
-            addLog('Bluetooth Simulated', 'Terhubung ke Micro:bit (Virtual Mode)', 'emerald');
-            showNotification('Simulasi koneksi Micro:bit aktif!', 'success');
+            addLog('Demo Mode', 'Mode simulasi aktif. Tidak ada data yang dikirim ke robot.', 'emerald');
+            showNotification('Mode demo aktif (tanpa perangkat).', 'info');
         }
 
         function updateBluetoothUI(connected, simulated = false) {
             const btBadge = document.getElementById('bt-status-badge');
             const btBtn = document.getElementById('microbit-connect-btn');
+            const btBtnLabel = btBtn ? btBtn.querySelector('span') : null;
+            const panelBtn = document.getElementById('bt-panel-connect-btn');
             const dashLabel = document.getElementById('dash-bt-label');
             const btPanelLabel = document.getElementById('bt-panel-status');
 
             if (connected) {
                 btBadge.className = "px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700 flex items-center space-x-2 transition-all";
-                btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>BT: ${simulated ? 'SIMULATED' : 'CONNECTED'}</span>`;
+                btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>BT: ${simulated ? 'DEMO' : 'CONNECTED'}</span>`;
                 if(btBtn) {
                     btBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer";
                 }
-                if(dashLabel) dashLabel.innerText = "Connected";
-                if(btPanelLabel) btPanelLabel.innerText = "Micro:bit Connected";
+                if(btBtnLabel) btBtnLabel.innerText = "DISCONNECT";
+                if(panelBtn) panelBtn.innerText = "Disconnect";
+                if(dashLabel) dashLabel.innerText = simulated ? "Demo" : "Connected";
+                if(btPanelLabel) btPanelLabel.innerText = simulated ? "Demo Mode" : "Micro:bit Connected";
             } else {
                 btBadge.className = "px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all";
                 btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span><span>BT: OFFLINE</span>`;
                 if(btBtn) {
                     btBtn.className = "bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center space-x-2 cursor-pointer";
                 }
+                if(btBtnLabel) btBtnLabel.innerText = "MICRO:BIT";
+                if(panelBtn) panelBtn.innerText = "Connect";
                 if(dashLabel) dashLabel.innerText = "Disconnected";
                 if(btPanelLabel) btPanelLabel.innerText = "Micro:bit Disconnected";
             }
         }
 
-        // Send Controller Command based on dynamic mapping
-        function sendControllerCmd(direction) {
+        // Send one text line (terminated with \n) to the micro:bit UART, chunked to 20 bytes.
+        function sendToMicrobit(text, silent = false) {
+            if (!isBluetoothConnected) {
+                if (!silent) showNotification('Belum terhubung ke Micro:bit. Klik tombol MICRO:BIT dulu.', 'warning');
+                return Promise.resolve(false);
+            }
+            if (isSimulated) return Promise.resolve(true);
+
+            const data = new TextEncoder().encode(text + '\n');
+            writeQueue = writeQueue.then(async () => {
+                for (let i = 0; i < data.length; i += 20) {
+                    await bleRx.writeValue(data.slice(i, i + 20));
+                }
+                return true;
+            }).catch(err => {
+                console.error('Gagal mengirim data:', err);
+                addLog('Send Error', 'Gagal mengirim: ' + (err.message || err), 'slate');
+                return false;
+            });
+            return writeQueue;
+        }
+
+        async function sendControllerCmd(direction) {
             const cmdText = btMapping[direction] || direction.toLowerCase();
-            showNotification(`Perintah "${cmdText}" (${direction}) dikirim ke Micro:bit`, 'success');
-            addLog('BT Command', `Direction: ${direction} -> Payload: ${cmdText}`, 'blue');
+            const ok = await sendToMicrobit(cmdText);
+            if (ok) {
+                addLog('BT Command', `Direction: ${direction} -> Payload: ${cmdText}${isSimulated ? ' (demo)' : ''}`, 'blue');
+            }
+        }
+
+        // Hold-to-move buttons: pressing sends the command, releasing sends STOP
+        function pressControl(direction) {
+            if (direction !== 'STOP') heldControl = direction;
+            sendControllerCmd(direction);
+        }
+
+        function releaseControl(direction) {
+            if (heldControl !== direction) return;
+            heldControl = null;
+            sendControllerCmd('STOP');
         }
 
         function updateSlider(sliderNum, val) {
             const valEl = document.getElementById(`slider${sliderNum}-val`);
             if(valEl) valEl.innerText = val;
+
+            const now = Date.now();
+            if (now - (lastSliderSent[sliderNum] || 0) < 120) return;
+            lastSliderSent[sliderNum] = now;
+            sendToMicrobit(`slider${sliderNum}:${val}`, true);
         }
 
         function sendUartCommand() {
-            const val = document.getElementById('uart-input')?.value;
+            const input = document.getElementById('uart-input');
+            const val = input ? input.value.trim() : '';
             if(!val) {
                 showNotification('Masukkan perintah UART terlebih dahulu', 'warning');
                 return;
             }
-            showNotification(`Perintah UART "${val}" dikirim ke Micro:bit`, 'success');
-            addLog('UART Sent', `Command: ${val}`, 'blue');
+            sendToMicrobit(val).then(ok => {
+                if (ok) addLog('UART Sent', `Command: ${val}`, 'blue');
+            });
+        }
+
+        function toggleAutoSend() {
+            const tgl = document.getElementById('auto-send-toggle');
+            autoSendEnabled = tgl ? tgl.checked : true;
+            lastVisionLabel = null;
+            showNotification(`IoT Auto-Send ${autoSendEnabled ? 'diaktifkan' : 'dimatikan'}`, 'info');
+        }
+
+        // Send the top prediction to the robot when confident and when it changes
+        function handleVisionAutoSend(top) {
+            if (!autoSendEnabled || !isBluetoothConnected) return;
+            if (top.probability * 100 < confidenceThreshold) return;
+            const label = String(top.className).trim().toUpperCase();
+            if (!Object.prototype.hasOwnProperty.call(btMapping, label)) return;
+            if (label === lastVisionLabel) return;
+            const now = Date.now();
+            if (now - lastVisionSent < 300) return;
+            lastVisionLabel = label;
+            lastVisionSent = now;
+            sendControllerCmd(label);
+        }
+
+        function saveSettings() {
+            const th = document.getElementById('setting-threshold');
+            const v = th ? parseInt(th.value, 10) : NaN;
+            if (!isNaN(v) && v >= 1 && v <= 100) confidenceThreshold = v;
+            const sa = document.getElementById('setting-show-all');
+            if (sa) showAllDevices = sa.checked;
+            showNotification('Pengaturan berhasil disimpan!', 'success');
         }
 
         function addLog(title, desc, type = 'purple') {
