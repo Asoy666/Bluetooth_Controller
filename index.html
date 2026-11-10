@@ -1,1173 +1,309 @@
-<!DOCTYPE html>
-<html lang="id">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TinyBit Robot - IoT & Vision AI Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- TensorFlow.js and Teachable Machine Image Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        brand: {
-                            50: '#eef2ff',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>LOFI Control · Micro</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']},colors:{ink:'#060914',electric:'#3b82f6',neon:'#22d3ee',violet:'#8b5cf6'}}}}</script>
+<style>
+:root{color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
+html,body,#root{min-height:100%}
+body{background:#060914;color:#e2e8f0;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+background-image:radial-gradient(900px 500px at 85% -10%,rgba(139,92,246,.16),transparent 60%),radial-gradient(800px 500px at -5% 10%,rgba(34,211,238,.10),transparent 60%);background-attachment:fixed}
+:focus-visible{outline:2px solid rgba(34,211,238,.7);outline-offset:2px}
+.glass{border-radius:1rem;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);box-shadow:0 10px 30px rgba(0,0,0,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);transition:border-color .2s}
+.glass:hover{border-color:rgba(255,255,255,.2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.75rem;padding:.6rem 1rem;font-size:.875rem;font-weight:600;transition:all .2s;border:1px solid transparent;cursor:pointer}
+.btn:disabled{opacity:.4;cursor:not-allowed}.btn:active:not(:disabled){transform:scale(.97)}
+.btn-p{background:linear-gradient(90deg,#3b82f6,#22d3ee);color:#060914}.btn-p:hover:not(:disabled){filter:brightness(1.1)}
+.btn-g{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);color:#e2e8f0}.btn-g:hover:not(:disabled){background:rgba(255,255,255,.1)}
+.btn-d{background:rgba(244,63,94,.15);border-color:rgba(251,113,133,.3);color:#fecdd3}
+.nt{touch-action:none;user-select:none;-webkit-user-select:none}
+.page{animation:pg .3s ease-out}@keyframes pg{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+input[type=range]{height:.5rem;width:100%;cursor:pointer;-webkit-appearance:none;appearance:none;border-radius:9999px;background:rgba(255,255,255,.1)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:1.25rem;width:1.25rem;border-radius:9999px;border:2px solid #22d3ee;background:#060914;box-shadow:0 0 12px rgba(34,211,238,.6)}
+input[type=range]::-moz-range-thumb{height:1.25rem;width:1.25rem;border-radius:9999px;border:2px solid #22d3ee;background:#060914}
+input[type=range]:disabled{opacity:.4;cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
-
-    <div class="flex h-screen overflow-hidden">
-
-        <!-- Sidebar Navigation -->
-        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between hidden md:flex z-10 shadow-sm">
-            <div>
-                <!-- Brand Header -->
-                <div class="p-6 flex items-center space-x-3 border-b border-slate-100">
-                    <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                        <i class="fa-solid fa-robot text-lg"></i>
-                    </div>
-                    <span class="text-xl font-bold tracking-tight text-slate-900">Robotic<span class="text-blue-600">web</span></span>
-                </div>
-
-                <!-- Navigation Links -->
-                <nav class="p-4 space-y-1.5">
-                    <a href="#" onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-white bg-blue-600 shadow-md shadow-blue-500/20 transition-all">
-                        <i class="fa-solid fa-chart-pie w-5 text-center"></i>
-                        <span>Dashboard</span>
-                    </a>
-                    <a href="#" onclick="switchTab('vision')" id="nav-vision" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
-                        <i class="fa-solid fa-eye w-5 text-center"></i>
-                        <span>Vision AI</span>
-                    </a>
-                    <a href="#" onclick="switchTab('bt')" id="nav-bt" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
-                        <i class="fa-solid fa-bluetooth-b w-5 text-center"></i>
-                        <span>BT Controller</span>
-                    </a>
-                    <a href="#" onclick="switchTab('help')" id="nav-help" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
-                        <i class="fa-solid fa-circle-question w-5 text-center"></i>
-                        <span>Help Center</span>
-                    </a>
-                    <a href="#" onclick="switchTab('settings')" id="nav-settings" class="nav-item flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
-                        <i class="fa-solid fa-gear w-5 text-center"></i>
-                        <span>Settings</span>
-                    </a>
-                </nav>
-            </div>
-
-            <!-- Developer Card Widget -->
-            <div class="p-4 m-4 bg-slate-900 text-white rounded-2xl shadow-lg relative overflow-hidden">
-                <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none"></div>
-                <div class="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-1">Developer</div>
-                <div class="text-sm font-bold text-slate-100 mb-2">M. Aysar Rizqin</div>
-                <div class="space-y-1 text-xs text-slate-300">
-                    <div class="flex items-center space-x-2 truncate">
-                        <i class="fa-brands fa-github text-slate-300 w-4"></i>
-                        <span class="truncate">maysarrizqin</span>
-                    </div>
-                    <div class="flex items-center space-x-2 truncate">
-                        <i class="fa-solid fa-envelope text-blue-400 w-4"></i>
-                        <span class="truncate">aysarrizqin@gmail.com</span>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <main class="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50">
-
-            <!-- Top Control Bar -->
-            <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-20 shadow-xs">
-                
-                <!-- Status Indicators (BT & FB) -->
-                <div class="flex items-center space-x-3">
-                    <div id="bt-status-badge" class="px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all">
-                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
-                        <span>BT: OFFLINE</span>
-                    </div>
-                    <div id="fb-status-badge" class="px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all">
-                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
-                        <span>FB: OFFLINE</span>
-                    </div>
-                </div>
-
-                <!-- Connect Micro:bit Action Only -->
-                <div class="flex items-center space-x-3 flex-wrap">
-                    <button onclick="connectMicrobit()" id="microbit-connect-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center space-x-2 cursor-pointer">
-                        <i class="fa-brands fa-bluetooth"></i>
-                        <span>MICRO:BIT</span>
-                    </button>
-                </div>
-            </header>
-
-            <div id="main-content-area" class="p-6 flex-1 flex flex-col max-w-7xl w-full mx-auto">
-                <!-- Content injected dynamically via switchTab() -->
-            </div>
-        </main>
-    </div>
-
-    <!-- Modal Custom Mapping BT Controller -->
-    <div id="mapping-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in duration-200">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
-                    <i class="fa-solid fa-sliders text-blue-600"></i>
-                    <span>Pengaturan Mapping Perintah BT</span>
-                </h3>
-                <button onclick="toggleMappingModal(false)" class="text-slate-400 hover:text-slate-600 text-sm font-bold px-2 py-1">✕</button>
-            </div>
-
-            <div class="space-y-3">
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">UP (Maju)</label>
-                    <input type="text" id="map-up" value="up" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">DOWN (Mundur)</label>
-                    <input type="text" id="map-down" value="down" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">LEFT (Kiri)</label>
-                    <input type="text" id="map-left" value="left" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">RIGHT (Kanan)</label>
-                    <input type="text" id="map-right" value="right" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">STOP (Lepas Semua Tombol)</label>
-                    <input type="text" id="map-stop" value="stop" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">OPEN (Buka Gripper)</label>
-                    <input type="text" id="map-open" value="open" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">CLOSE (Tutup Gripper)</label>
-                    <input type="text" id="map-close" value="close" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                </div>
-            </div>
-
-            <div class="pt-2">
-                <button onclick="saveMappingConfig()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3 rounded-xl shadow-md shadow-blue-500/20 transition cursor-pointer">
-                    SIMPAN MAPPING
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Notification Message Modal / Box -->
-    <div id="notification-modal" class="fixed bottom-6 right-6 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl z-50 transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3">
-        <i id="notif-icon" class="fa-solid fa-circle-info text-blue-400"></i>
-        <span id="notif-text" class="text-sm font-medium">Notification message</span>
-    </div>
-
-    <script>
-        // State variables
-        let isCameraActive = false;
-        let isBluetoothConnected = false;
-        let isFirebaseSynced = false;
-        let videoStream = null;
-        let currentTab = 'dashboard';
-
-        // Teachable Machine Variables
-        let tmModel = null;
-        let maxPredictions = 0;
-        let isModelLoading = false;
-        let currentLabels = ['stop', 'up', 'down', 'left', 'right', 'open', 'close'];
-
-        // Custom BT Command Mapping State
-        let btMapping = {
-            UP: 'up',
-            DOWN: 'down',
-            LEFT: 'left',
-            RIGHT: 'right',
-            STOP: 'stop',
-            OPEN: 'open',
-            CLOSE: 'close'
-        };
-
-        // Active key hold tracking to prevent duplicate spamming
-        let activeKeyCommand = null;
-
-        // Bluetooth (Nordic UART service used by micro:bit)
-        const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-        const UART_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // web -> micro:bit (write)
-        const UART_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // micro:bit -> web (notify)
-        let bleDevice = null;
-        let bleRx = null;
-        let bleTx = null;
-        let isSimulated = false;
-        let writeQueue = Promise.resolve();
-        let showAllDevices = false;
-        let isConnecting = false;
-
-        // Vision auto-send + settings state
-        let autoSendEnabled = true;
-        let confidenceThreshold = 85;
-        let lastVisionLabel = null;
-        let lastVisionSent = 0;
-        let heldControl = null;
-        let lastSliderSent = {};
-
-        // Templates for each tab
-        const tabTemplates = {
-            dashboard: `
-                <div class="space-y-6">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-microchip"></i></div>
-                            <div>
-                                <div class="text-xs font-medium text-slate-500">Micro:bit Status</div>
-                                <div id="dash-bt-label" class="text-lg font-bold text-slate-800">Disconnected</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-database"></i></div>
-                            <div>
-                                <div class="text-xs font-medium text-slate-500">Firebase DB</div>
-                                <div id="dash-fb-label" class="text-lg font-bold text-slate-800">Offline</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-eye"></i></div>
-                            <div>
-                                <div class="text-xs font-medium text-slate-500">AI Model Status</div>
-                                <div id="dash-ai-label" class="text-lg font-bold text-slate-800">Ready</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                            <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-signal"></i></div>
-                            <div>
-                                <div class="text-xs font-medium text-slate-500">Packet Rate</div>
-                                <div class="text-lg font-bold text-slate-800">12 msg/s</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                            <h3 class="text-base font-bold text-slate-800 mb-4">Real-time Telemetry Monitor</h3>
-                            <div class="h-64 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
-                                <i class="fa-solid fa-chart-line text-4xl mb-2 text-blue-500 animate-pulse"></i>
-                                <p class="text-sm font-semibold text-slate-700">Live sensor stream graph active</p>
-                                <p class="text-xs text-slate-500 mt-1">Listening to micro:bit sensor input & Teachable Machine inference events.</p>
-                            </div>
-                        </div>
-                        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                            <h3 class="text-base font-bold text-slate-800">Quick Actions</h3>
-                            <button onclick="connectMicrobit()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition shadow-sm">Connect Micro:bit</button>
-                            <button onclick="switchTab('vision')" class="w-full py-3 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold rounded-xl text-sm transition">Open Vision AI Panel</button>
-                            <button onclick="switchTab('bt')" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-xl text-sm transition">Open BT Controller</button>
-                        </div>
-                    </div>
-                </div>
-            `,
-            vision: `
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 space-y-6">
-                        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Link Model Teachable Machine</label>
-                                <div class="flex space-x-2">
-                                    <input type="text" id="model-url" value="" placeholder="e.g. https://teachablemachine.withgoogle.com/models/xxxxxx/" class="flex-1 bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                                    <button onclick="loadTeachableMachineModel()" id="load-model-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-5 py-3 rounded-xl shadow transition flex items-center space-x-2 cursor-pointer">
-                                        <i class="fa-solid fa-cloud-arrow-down"></i>
-                                        <span>LOAD MODEL</span>
-                                    </button>
-                                </div>
-                                <p class="text-[11px] text-slate-400 mt-1.5">Masukkan URL Teachable Machine (mengandung model.json atau folder share publik)</p>
-                            </div>
-
-                            <div class="flex flex-wrap items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <div>
-                                    <div class="text-sm font-bold text-slate-800 flex items-center space-x-2">
-                                        <span>IoT Auto-Send Mode</span>
-                                        <span class="bg-blue-100 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded">Active</span>
-                                    </div>
-                                    <div class="text-xs text-slate-500 mt-0.5">Otomatis kirim hasil deteksi (Key: "vision") ke Micro:bit jika confidence > 85%</div>
-                                </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="auto-send-toggle" checked class="sr-only peer" onchange="toggleAutoSend()">
-                                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"></div>
-                                </label>
-                            </div>
-
-                            <button onclick="toggleCameraState()" id="camera-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer">
-                                <i class="fa-solid fa-video text-xs"></i>
-                                <span id="camera-btn-text">START CAMERA</span>
-                            </button>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center relative overflow-hidden aspect-video bg-slate-900">
-                                <video id="webcam-video" autoplay playsinline muted class="w-full h-full object-cover rounded-xl transform -scale-x-100"></video>
-                                <canvas id="canvas-preview" class="hidden"></canvas>
-                                <div id="camera-overlay" class="absolute inset-0 bg-slate-900/80 flex flex-col items-center justify-center text-white">
-                                    <i class="fa-solid fa-video-slash text-3xl mb-2 text-red-400"></i>
-                                    <span class="text-xs font-medium">Camera Offline / Stopped</span>
-                                </div>
-                            </div>
-
-                            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-                                <div class="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
-                                    <span>Hasil Prediksi:</span>
-                                    <span class="text-xs font-normal text-slate-400" id="ai-status-label">Default Fallback Model</span>
-                                </div>
-                                <div id="prediction-bars-container" class="space-y-3.5 flex-1 flex flex-col justify-center">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="lg:col-span-1 space-y-4">
-                        <div class="flex items-center justify-between">
-                            <h2 class="text-base font-bold text-slate-900">System Activity</h2>
-                            <button onclick="clearLogs()" class="text-xs text-slate-400 hover:text-slate-600 transition">Clear</button>
-                        </div>
-                        <div id="activity-log-container" class="space-y-3">
-                            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start space-x-3.5">
-                                <div class="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0 mt-0.5"><i class="fa-solid fa-eye text-sm"></i></div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="text-sm font-bold text-slate-800">Vision AI Initialized</div>
-                                    <div class="text-xs text-slate-500 mt-0.5 truncate">Ready to load Teachable Machine URL.</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `,
-            bt: `
-                <div class="space-y-6">
-                    <div class="bg-white rounded-3xl p-8 shadow-sm text-slate-800 relative overflow-hidden min-h-[520px] flex flex-col justify-between border border-slate-200">
-                        <div class="flex flex-wrap items-center justify-between gap-4 z-10">
-                            <div>
-                                <h2 class="text-2xl font-extrabold tracking-tight text-slate-900">Bluetooth Micro:bit Controller</h2>
-                                <p class="text-xs text-slate-500 mt-1">Gunakan tombol arah (tahan tombol Panah pada keyboard), tombol O/C untuk Open/Close, atau klik tombol di layar.</p>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <button onclick="toggleMappingModal(true)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl shadow-xs border border-slate-200 transition flex items-center space-x-2 cursor-pointer">
-                                    <i class="fa-solid fa-sliders text-blue-600"></i>
-                                    <span>Mapping Perintah</span>
-                                </button>
-                                <span id="bt-panel-status" class="bg-slate-100 backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-semibold border border-slate-200 text-slate-600">Micro:bit Disconnected</span>
-                                <button onclick="connectMicrobit()" id="bt-panel-connect-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow transition">Connect</button>
-                                <button onclick="startDemoMode()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs px-3 py-2 rounded-xl border border-slate-200 transition" title="Tanpa perangkat, hanya untuk uji tampilan">Demo</button>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center my-8 z-10">
-                            <div class="flex flex-col items-center justify-center relative py-6">
-                                <div class="relative w-80 h-72 flex items-center justify-center">
-                                    
-                                    <button id="btn-up" style="touch-action:none" onpointerdown="pressControl('UP')" onpointerup="releaseControl('UP')" onpointerleave="releaseControl('UP')" onpointercancel="releaseControl('UP')" class="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
-                                        <i class="fa-solid fa-arrow-up"></i>
-                                    </button>
-
-                                    <button id="btn-down" style="touch-action:none" onpointerdown="pressControl('DOWN')" onpointerup="releaseControl('DOWN')" onpointerleave="releaseControl('DOWN')" onpointercancel="releaseControl('DOWN')" class="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
-                                        <i class="fa-solid fa-arrow-down"></i>
-                                    </button>
-
-                                    <button id="btn-left" style="touch-action:none" onpointerdown="pressControl('LEFT')" onpointerup="releaseControl('LEFT')" onpointerleave="releaseControl('LEFT')" onpointercancel="releaseControl('LEFT')" class="absolute left-4 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
-                                        <i class="fa-solid fa-arrow-left"></i>
-                                    </button>
-
-                                    <button id="btn-right" style="touch-action:none" onpointerdown="pressControl('RIGHT')" onpointerup="releaseControl('RIGHT')" onpointerleave="releaseControl('RIGHT')" onpointercancel="releaseControl('RIGHT')" class="absolute right-4 top-1/2 -translate-y-1/2 w-16 h-16 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl flex items-center justify-center text-slate-700 text-2xl shadow-sm transition border border-slate-200 cursor-pointer">
-                                        <i class="fa-solid fa-arrow-right"></i>
-                                    </button>
-
-                                    <button id="btn-stop" style="touch-action:none" onpointerdown="pressControl('STOP')" class="absolute w-16 h-16 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-full flex items-center justify-center text-white text-2xl shadow-md transition cursor-pointer" title="Stop / Lepas Tombol">
-                                        <i class="fa-solid fa-stop text-xl"></i>
-                                    </button>
-
-                                    <!-- Tombol OPEN -->
-                                    <button id="btn-open" onclick="sendControllerCmd('OPEN')" class="absolute top-2 left-0 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
-                                        <i class="fa-solid fa-door-open"></i>
-                                        <span>OPEN</span>
-                                    </button>
-
-                                    <!-- Tombol CLOSE -->
-                                    <button id="btn-close" onclick="sendControllerCmd('CLOSE')" class="absolute top-2 right-0 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
-                                        <i class="fa-solid fa-door-closed"></i>
-                                        <span>CLOSE</span>
-                                    </button>
-
-                                </div>
-                            </div>
-
-                            <div class="space-y-8 bg-slate-50 backdrop-blur-md p-6 rounded-3xl border border-slate-200 shadow-xs">
-                                
-                                <div class="space-y-2">
-                                    <div class="flex justify-between items-center text-sm font-bold tracking-wider text-slate-700">
-                                        <span>SLIDER1</span>
-                                        <span id="slider1-val" class="bg-white border border-slate-200 text-blue-600 px-2.5 py-0.5 rounded-lg text-xs font-mono shadow-2xs">50</span>
-                                    </div>
-                                    <input type="range" id="controller-slider1" min="0" max="100" value="50" oninput="updateSlider('1', this.value)" class="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg">
-                                </div>
-
-                                <div class="space-y-2">
-                                    <div class="flex justify-between items-center text-sm font-bold tracking-wider text-slate-700">
-                                        <span>SLIDER2</span>
-                                        <span id="slider2-val" class="bg-white border border-slate-200 text-blue-600 px-2.5 py-0.5 rounded-lg text-xs font-mono shadow-2xs">50</span>
-                                    </div>
-                                    <input type="range" id="controller-slider2" min="0" max="100" value="50" oninput="updateSlider('2', this.value)" class="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg">
-                                </div>
-
-                                <div class="pt-2 flex items-center space-x-2">
-                                    <input type="text" id="uart-input" placeholder="Ketik perintah kustom..." class="flex-1 bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs">
-                                    <button onclick="sendUartCommand()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow">Kirim</button>
-                                </div>
-
-                            </div>
-                        </div>
-
-                        <div class="flex justify-between items-center z-10 pt-4 border-t border-slate-100 text-xs font-bold tracking-widest text-slate-400">
-                            <span>ROBOTIC WEB CONTROLLER</span>
-                            <div class="flex items-center space-x-1">
-                                <i class="fa-solid fa-robot text-blue-600"></i>
-                                <span class="text-slate-600">LOFI ROBOT</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `,
-            help: `
-                <div class="space-y-6">
-                    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                        <h2 class="text-lg font-bold text-slate-900">Help Center & Documentation</h2>
-                        <p class="text-xs text-slate-500">Panduan lengkap integrasi Robotic web dengan perangkat Micro:bit dan Teachable Machine.</p>
-                        
-                        <div class="space-y-3 pt-2">
-                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div class="font-bold text-sm text-slate-800 mb-1">1. Kontrol Keyboard (Tahan Tombol / Key Hold)</div>
-                                <p class="text-xs text-slate-600">Saat berada di tab <strong>BT Controller</strong>, tahan tombol Panah Atas, Bawah, Kiri, atau Kanan pada keyboard untuk bergerak. Tekan <strong>O</strong> untuk Open dan <strong>C</strong> untuk Close. Robot akan otomatis berhenti (STOP) saat tombol dilepas.</p>
-                            </div>
-                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div class="font-bold text-sm text-slate-800 mb-1">2. Cara Memasukkan Teachable Machine Link</div>
-                                <p class="text-xs text-slate-600">Salin link dari tombol <strong>Share -> Your model link -> Link (TFJS)</strong> di Google Teachable Machine lalu klik <strong>LOAD MODEL</strong> di tab Vision AI.</p>
-                            </div>
-                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div class="font-bold text-sm text-slate-800 mb-1">3. Menghubungkan Tiny:bit (Bluetooth)</div>
-                                <ol class="text-xs text-slate-600 list-decimal ml-4 space-y-1">
-                                    <li>Buka website ini di <strong>Chrome atau Edge</strong> (komputer/Android). Safari, Firefox, dan iPhone tidak mendukung Web Bluetooth.</li>
-                                    <li>Di MakeCode: tambahkan extension <strong>Bluetooth</strong> dan <strong>Tinybit</strong>, hapus extension <strong>Radio</strong> (tidak bisa dipakai bersamaan).</li>
-                                    <li>Project Settings (ikon gerigi) &rarr; <strong>No Pairing Required: Yes</strong>.</li>
-                                    <li>Download program di bawah ke Micro:bit, nyalakan Tiny:bit, lalu klik tombol <strong>MICRO:BIT</strong> dan pilih perangkat "BBC micro:bit [xxxxx]".</li>
-                                    <li>Jika gagal: hapus pairing lama di Bluetooth HP/PC, putuskan koneksi dari aplikasi lain, lalu restart Micro:bit.</li>
-                                </ol>
-                                <div class="text-xs font-semibold text-slate-700 mt-3 mb-1">Contoh program MakeCode (JavaScript):</div>
-                                <pre class="text-[11px] leading-relaxed bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto font-mono">bluetooth.startUartService()
-bluetooth.onBluetoothConnected(function () {
-    basic.showIcon(IconNames.Yes)
-})
-bluetooth.onBluetoothDisconnected(function () {
-    Tinybit.CarCtrl(Tinybit.CarState.Car_Stop)
-    basic.showIcon(IconNames.No)
-})
-bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () {
-    let cmd = bluetooth.uartReadUntil(serial.delimiters(Delimiters.NewLine))
-    if (cmd == "up") {
-        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_Run, 100)
-    } else if (cmd == "down") {
-        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_Back, 100)
-    } else if (cmd == "left") {
-        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_SpinLeft, 100)
-    } else if (cmd == "right") {
-        Tinybit.CarCtrlSpeed(Tinybit.CarState.Car_SpinRight, 100)
-    } else if (cmd == "stop") {
-        Tinybit.CarCtrl(Tinybit.CarState.Car_Stop)
-    }
-    // "open" / "close" / "slider1:50" / "slider2:50": tambahkan aksi sesuai perangkat Anda
-})
-basic.showIcon(IconNames.Heart)</pre>
-                                <p class="text-[11px] text-slate-500 mt-2">Website mengirim setiap perintah sebagai teks diakhiri baris baru (contoh: <code>up</code>). Teks bisa diubah di <strong>Mapping Perintah</strong>. Nama blok Tinybit dapat sedikit berbeda antar versi extension.</p>
-                            </div>
-                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div class="font-bold text-sm text-slate-800 mb-1">4. Kontak Pengembang</div>
-                                <p class="text-xs text-slate-600">Dikembangkan oleh <strong>M. Aysar Rizqin</strong> (GitHub: maysarrizqin | Email: aysarrizqin@gmail.com).</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `,
-            settings: `
-                <div class="space-y-6">
-                    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-                        <h2 class="text-lg font-bold text-slate-900">Settings & Preferences</h2>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Inference Confidence Threshold (%)</label>
-                                <input type="number" id="setting-threshold" min="1" max="100" value="85" class="w-full bg-slate-50 border border-slate-200 text-xs rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                                <div>
-                                    <div class="font-bold text-sm text-slate-800">Dark Mode UI Preview</div>
-                                    <div class="text-xs text-slate-500">Sesuaikan tema antarmuka dashboard</div>
-                                </div>
-                                <input type="checkbox" class="w-5 h-5 rounded text-blue-600">
-                            </div>
-                            <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                                <div>
-                                    <div class="font-bold text-sm text-slate-800">Tampilkan semua perangkat Bluetooth</div>
-                                    <div class="text-xs text-slate-500">Aktifkan jika Micro:bit tidak muncul di daftar pemindaian</div>
-                                </div>
-                                <input type="checkbox" id="setting-show-all" class="w-5 h-5 rounded text-blue-600">
-                            </div>
-                            <button onclick="saveSettings()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition">Save Changes</button>
-                        </div>
-                    </div>
-                </div>
-            `
-        };
-
-        window.onload = function() {
-            switchTab('dashboard');
-            renderPredictionBars(currentLabels);
-            addLog('System Ready', 'Berhasil membuka Dashboard. Siap terhubung ke Micro:bit & Vision AI.', 'emerald');
-            window.requestAnimationFrame(loopPrediction);
-
-            // Keydown Listener
-            window.addEventListener('keydown', function(e) {
-                if (currentTab !== 'bt') return;
-                
-                if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
-                    e.preventDefault();
-                }
-
-                let direction = null;
-                let btnId = null;
-
-                if (e.key === 'ArrowUp') { direction = 'UP'; btnId = 'btn-up'; }
-                else if (e.key === 'ArrowDown') { direction = 'DOWN'; btnId = 'btn-down'; }
-                else if (e.key === 'ArrowLeft') { direction = 'LEFT'; btnId = 'btn-left'; }
-                else if (e.key === 'ArrowRight') { direction = 'RIGHT'; btnId = 'btn-right'; }
-                else if (e.key === ' ' || e.key === 'Spacebar') { direction = 'STOP'; btnId = 'btn-stop'; }
-                else if (e.key === 'o' || e.key === 'O') { direction = 'OPEN'; btnId = 'btn-open'; }
-                else if (e.key === 'c' || e.key === 'C') { direction = 'CLOSE'; btnId = 'btn-close'; }
-
-                if (direction) {
-                    if (activeKeyCommand !== direction) {
-                        activeKeyCommand = direction;
-                        sendControllerCmd(direction);
-                        setButtonActiveState(btnId, true);
-                    }
-                }
-            });
-
-            // Keyup Listener
-            window.addEventListener('keyup', function(e) {
-                if (currentTab !== 'bt') return;
-
-                let direction = null;
-                let btnId = null;
-
-                if (e.key === 'ArrowUp') { direction = 'UP'; btnId = 'btn-up'; }
-                else if (e.key === 'ArrowDown') { direction = 'DOWN'; btnId = 'btn-down'; }
-                else if (e.key === 'ArrowLeft') { direction = 'LEFT'; btnId = 'btn-left'; }
-                else if (e.key === 'ArrowRight') { direction = 'RIGHT'; btnId = 'btn-right'; }
-                else if (e.key === ' ' || e.key === 'Spacebar') { direction = 'STOP'; btnId = 'btn-stop'; }
-                else if (e.key === 'o' || e.key === 'O') { direction = 'OPEN'; btnId = 'btn-open'; }
-                else if (e.key === 'c' || e.key === 'C') { direction = 'CLOSE'; btnId = 'btn-close'; }
-
-                if (direction && activeKeyCommand === direction) {
-                    activeKeyCommand = null;
-                    setButtonActiveState(btnId, false);
-                    if (['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(direction)) {
-                        sendControllerCmd('STOP');
-                    }
-                }
-            });
-        }
-
-        function setButtonActiveState(btnId, isActive) {
-            const btn = document.getElementById(btnId);
-            if (!btn) return;
-            if (isActive) {
-                btn.classList.add('scale-95', 'opacity-85');
-            } else {
-                btn.classList.remove('scale-95', 'opacity-85');
-            }
-        }
-
-        function switchTab(tabName) {
-            if (lastVisionLabel && lastVisionLabel !== 'STOP' && tabName !== 'vision' && isBluetoothConnected) {
-                sendControllerCmd('STOP');
-            }
-            lastVisionLabel = null;
-            currentTab = tabName;
-            activeKeyCommand = null;
-            document.querySelectorAll('.nav-item').forEach(el => {
-                el.classList.remove('bg-blue-600', 'text-white', 'shadow-md', 'shadow-blue-500/20');
-                el.classList.add('text-slate-600', 'hover:bg-slate-50', 'hover:text-slate-900');
-            });
-            const activeNav = document.getElementById('nav-' + tabName);
-            if(activeNav) {
-                activeNav.classList.remove('text-slate-600', 'hover:bg-slate-50', 'hover:text-slate-900');
-                activeNav.classList.add('bg-blue-600', 'text-white', 'shadow-md', 'shadow-blue-500/20');
-            }
-
-            const mainArea = document.getElementById('main-content-area');
-            mainArea.innerHTML = tabTemplates[tabName] || tabTemplates['dashboard'];
-
-            if(tabName === 'vision') {
-                renderPredictionBars(currentLabels);
-                const tgl = document.getElementById('auto-send-toggle');
-                if (tgl) tgl.checked = autoSendEnabled;
-            }
-            if(tabName === 'settings') {
-                const th = document.getElementById('setting-threshold');
-                if (th) th.value = confidenceThreshold;
-                const sa = document.getElementById('setting-show-all');
-                if (sa) sa.checked = showAllDevices;
-            }
-            updateBluetoothUI(isBluetoothConnected, isSimulated);
-        }
-
-        function toggleMappingModal(show) {
-            const modal = document.getElementById('mapping-modal');
-            if (!modal) return;
-            if (show) {
-                document.getElementById('map-up').value = btMapping.UP;
-                document.getElementById('map-down').value = btMapping.DOWN;
-                document.getElementById('map-left').value = btMapping.LEFT;
-                document.getElementById('map-right').value = btMapping.RIGHT;
-                document.getElementById('map-stop').value = btMapping.STOP;
-                document.getElementById('map-open').value = btMapping.OPEN || 'open';
-                document.getElementById('map-close').value = btMapping.CLOSE || 'close';
-                modal.classList.remove('hidden');
-            } else {
-                modal.classList.add('hidden');
-            }
-        }
-
-        function saveMappingConfig() {
-            btMapping.UP = document.getElementById('map-up').value.trim() || 'up';
-            btMapping.DOWN = document.getElementById('map-down').value.trim() || 'down';
-            btMapping.LEFT = document.getElementById('map-left').value.trim() || 'left';
-            btMapping.RIGHT = document.getElementById('map-right').value.trim() || 'right';
-            btMapping.STOP = document.getElementById('map-stop').value.trim() || 'stop';
-            btMapping.OPEN = document.getElementById('map-open').value.trim() || 'open';
-            btMapping.CLOSE = document.getElementById('map-close').value.trim() || 'close';
-
-            toggleMappingModal(false);
-            showNotification('Mapping perintah BT berhasil disimpan!', 'success');
-            addLog('BT Mapping', `Perintah baru: UP(${btMapping.UP}), DOWN(${btMapping.DOWN}), LEFT(${btMapping.LEFT}), RIGHT(${btMapping.RIGHT}), STOP(${btMapping.STOP}), OPEN(${btMapping.OPEN}), CLOSE(${btMapping.CLOSE})`, 'blue');
-        }
-
-        function renderPredictionBars(labels) {
-            const container = document.getElementById('prediction-bars-container');
-            if (!container) return;
-            
-            let html = '';
-            labels.forEach(label => {
-                html += `
-                    <div>
-                        <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                            <span class="truncate max-w-[150px]">${label}</span>
-                            <span id="score-${label}">0%</span>
-                        </div>
-                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                            <div id="bar-${label}" class="bg-blue-600 h-full w-0 transition-all duration-150 rounded-full"></div>
-                        </div>
-                    </div>
-                `;
-            });
-            container.innerHTML = html;
-        }
-
-        async function loadTeachableMachineModel() {
-            const urlInput = document.getElementById('model-url');
-            if(!urlInput || !urlInput.value.trim()) {
-                showNotification('Masukkan link Teachable Machine terlebih dahulu!', 'warning');
-                return;
-            }
-
-            let rawUrl = urlInput.value.trim();
-            if (!rawUrl.endsWith('/')) {
-                rawUrl += '/';
-            }
-
-            const modelURL = rawUrl + 'model.json';
-            const metadataURL = rawUrl + 'metadata.json';
-
-            const btn = document.getElementById('load-model-btn');
-            if(btn) {
-                btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>LOADING...</span>`;
-                btn.disabled = true;
-            }
-
-            showNotification('Mengunduh model Teachable Machine...', 'info');
-            addLog('Model Loading', `Menghubungkan ke ${rawUrl}`, 'blue');
-
-            try {
-                tmModel = await tmImage.load(modelURL, metadataURL);
-                maxPredictions = tmModel.getTotalClasses();
-                currentLabels = tmModel.getClassLabels();
-
-                renderPredictionBars(currentLabels);
-                showNotification(`Model berhasil dimuat! (${maxPredictions} kelas ditemukan)`, 'success');
-                addLog('Model Loaded', `Berhasil memuat ${maxPredictions} kelas: ${currentLabels.join(', ')}`, 'emerald');
-                
-                const statusLbl = document.getElementById('ai-status-label');
-                if(statusLbl) statusLbl.innerText = `Custom Model (${maxPredictions} classes)`;
-
-            } catch (err) {
-                console.error("Error loading Teachable Machine model:", err);
-                showNotification('Gagal memuat model. Periksa kembali URL atau CORS.', 'warning');
-                addLog('Model Error', 'Gagal memuat URL Teachable Machine. Menggunakan fallback.', 'slate');
-            } finally {
-                if(btn) {
-                    btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-down"></i><span>LOAD MODEL</span>`;
-                    btn.disabled = false;
-                }
-            }
-        }
-
-        async function startWebcam() {
-            try {
-                videoStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
-                const videoElement = document.getElementById('webcam-video');
-                if(videoElement) {
-                    videoElement.srcObject = videoStream;
-                    videoElement.play();
-                    const overlay = document.getElementById('camera-overlay');
-                    if(overlay) overlay.classList.add('hidden');
-                    isCameraActive = true;
-                }
-            } catch (err) {
-                console.warn("Webcam access denied or unavailable:", err);
-                const overlay = document.getElementById('camera-overlay');
-                if(overlay) overlay.classList.remove('hidden');
-                isCameraActive = false;
-            }
-        }
-
-        function toggleCameraState() {
-            const btn = document.getElementById('camera-btn');
-            const btnText = document.getElementById('camera-btn-text');
-            const overlay = document.getElementById('camera-overlay');
-
-            if (isCameraActive) {
-                if (videoStream) {
-                    videoStream.getTracks().forEach(track => track.stop());
-                }
-                const vid = document.getElementById('webcam-video');
-                if(vid) vid.srcObject = null;
-                if(overlay) overlay.classList.remove('hidden');
-                if(btn) {
-                    btn.className = "w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer";
-                    btnText.innerText = "START CAMERA";
-                }
-                isCameraActive = false;
-                addLog('Vision AI Stopped', 'Kamera dimatikan.', 'slate');
-                if (lastVisionLabel && lastVisionLabel !== 'STOP') sendControllerCmd('STOP');
-                lastVisionLabel = null;
-                showNotification('Kamera dihentikan', 'warning');
-            } else {
-                startWebcam().then(() => {
-                    if(isCameraActive && btn) {
-                        btn.className = "w-full bg-red-500 hover:bg-red-600 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md shadow-red-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer";
-                        btnText.innerText = "STOP CAMERA";
-                        addLog('Vision AI Active', 'Klasifikasi model berjalan.', 'purple');
-                        showNotification('Kamera diaktifkan', 'success');
-                    }
-                });
-            }
-        }
-
-        async function loopPrediction() {
-            if (currentTab === 'vision' && isCameraActive) {
-                const videoElement = document.getElementById('webcam-video');
-                if (tmModel && videoElement && videoElement.readyState === 4) {
-                    try {
-                        const predictions = await tmModel.predict(videoElement);
-                        let topPrediction = predictions[0];
-                        
-                        predictions.forEach(p => {
-                            if (p.probability > topPrediction.probability) {
-                                topPrediction = p;
-                            }
-                            const scorePct = Math.round(p.probability * 100);
-                            const sEl = document.getElementById(`score-${p.className}`);
-                            const bEl = document.getElementById(`bar-${p.className}`);
-                            if(sEl) sEl.innerText = scorePct + '%';
-                            if(bEl) bEl.style.width = scorePct + '%';
-                        });
-
-                        handleVisionAutoSend(topPrediction);
-
-                        const statusLbl = document.getElementById('ai-status-label');
-                        if(statusLbl) {
-                            statusLbl.innerText = `Active: ${topPrediction.className} (${Math.round(topPrediction.probability * 100)}%)`;
-                        }
-                    } catch (e) {}
-                } else if (!tmModel && isCameraActive) {
-                    simulateFallbackInference();
-                }
-            }
-            window.requestAnimationFrame(loopPrediction);
-        }
-
-        function simulateFallbackInference() {
-            const directions = currentLabels;
-            const chosen = directions[Math.floor(Math.random() * directions.length)];
-            
-            let scores = {};
-            let highKey = chosen;
-            let highVal = Math.floor(Math.random() * 20) + 80;
-            scores[highKey] = highVal;
-            
-            let remainder = 100 - highVal;
-            const others = directions.filter(d => d !== highKey);
-            others.forEach((d, idx) => {
-                if (idx === others.length - 1) {
-                    scores[d] = remainder;
-                } else {
-                    let part = Math.floor(Math.random() * remainder);
-                    scores[d] = part;
-                    remainder -= part;
-                }
-            });
-
-            directions.forEach(d => {
-                const sEl = document.getElementById(`score-${d}`);
-                const bEl = document.getElementById(`bar-${d}`);
-                if(sEl) sEl.innerText = (scores[d] || 0) + '%';
-                if(bEl) bEl.style.width = (scores[d] || 0) + '%';
-            });
-
-            const statusLbl = document.getElementById('ai-status-label');
-            if(statusLbl && !tmModel) statusLbl.innerText = `Simulated: ${highKey} (${highVal}%)`;
-        }
-
-        function describeBleError(err) {
-            const name = err && err.name ? err.name : 'Error';
-            const msg = (err && err.message) ? err.message : String(err);
-            if (name === 'NotFoundError' && /cancel/i.test(msg)) {
-                return 'Pemilihan perangkat dibatalkan.';
-            }
-            if (name === 'NotFoundError' && /service/i.test(msg)) {
-                return 'Micro:bit terhubung tetapi tidak punya Bluetooth UART Service. Pastikan program MakeCode berisi blok "bluetooth start UART service" (lihat Help Center).';
-            }
-            if (name === 'NotFoundError') {
-                return 'Tidak ada Micro:bit yang ditemukan. Nyalakan Tiny:bit, pastikan program Bluetooth sedang berjalan, dan tidak sedang terhubung ke aplikasi/HP lain. Jika perlu, aktifkan "Tampilkan semua perangkat" di Settings.';
-            }
-            if (name === 'SecurityError') {
-                return 'Akses Bluetooth diblokir. Buka halaman lewat HTTPS atau file lokal di Chrome/Edge (bukan di dalam iframe/preview).';
-            }
-            if (name === 'NetworkError') {
-                return 'Gagal tersambung (GATT). Di MakeCode aktifkan Project Settings > "No Pairing Required: Yes", hapus pairing lama "BBC micro:bit" di pengaturan Bluetooth perangkat, lalu restart Micro:bit.';
-            }
-            return name + ': ' + msg;
-        }
-
-        function resetBleState() {
-            bleRx = null;
-            bleTx = null;
-            isBluetoothConnected = false;
-            isSimulated = false;
-            lastVisionLabel = null;
-            updateBluetoothUI(false);
-        }
-
-        function onBleDisconnected() {
-            if (!isBluetoothConnected) return;
-            resetBleState();
-            addLog('Bluetooth Disconnected', 'Koneksi ke Micro:bit terputus.', 'slate');
-            showNotification('Koneksi Micro:bit terputus.', 'warning');
-        }
-
-        function onBleData(event) {
-            const text = new TextDecoder().decode(event.target.value).trim();
-            if (text) addLog('Micro:bit', 'Pesan masuk: ' + text, 'emerald');
-        }
-
-        async function connectWithRetry(device, attempts = 3) {
-            let lastErr;
-            for (let i = 0; i < attempts; i++) {
-                try {
-                    return await device.gatt.connect();
-                } catch (e) {
-                    lastErr = e;
-                    await new Promise(r => setTimeout(r, 600));
-                }
-            }
-            throw lastErr;
-        }
-
-        async function connectMicrobit() {
-            if (isConnecting) return;
-
-            // Toggle: disconnect if already connected
-            if (isBluetoothConnected) {
-                if (heldControl) { heldControl = null; }
-                if (isSimulated) {
-                    resetBleState();
-                } else {
-                    try { await sendToMicrobit(btMapping.STOP, true); } catch (e) {}
-                    const dev = bleDevice;
-                    resetBleState();
-                    if (dev && dev.gatt && dev.gatt.connected) dev.gatt.disconnect();
-                }
-                addLog('Bluetooth Disconnected', 'Koneksi perangkat diputus.', 'slate');
-                showNotification('Micro:bit diputus.', 'info');
-                return;
-            }
-
-            if (!navigator.bluetooth) {
-                addLog('Bluetooth Error', 'Browser tidak mendukung Web Bluetooth.', 'slate');
-                showNotification('Browser ini tidak mendukung Web Bluetooth. Gunakan Chrome atau Edge (bukan Safari/Firefox/iPhone).', 'warning');
-                return;
-            }
-
-            isConnecting = true;
-            try {
-                showNotification('Memindai perangkat Micro:bit...', 'info');
-                const options = showAllDevices
-                    ? { acceptAllDevices: true, optionalServices: [UART_SERVICE] }
-                    : { filters: [{ namePrefix: 'BBC micro:bit' }, { namePrefix: 'micro:bit' }], optionalServices: [UART_SERVICE] };
-
-                bleDevice = await navigator.bluetooth.requestDevice(options);
-                bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
-
-                showNotification('Menghubungkan ke ' + (bleDevice.name || 'Micro:bit') + '...', 'info');
-                const server = await connectWithRetry(bleDevice);
-                const service = await server.getPrimaryService(UART_SERVICE);
-                bleRx = await service.getCharacteristic(UART_RX_CHAR);
-                try {
-                    bleTx = await service.getCharacteristic(UART_TX_CHAR);
-                    await bleTx.startNotifications();
-                    bleTx.addEventListener('characteristicvaluechanged', onBleData);
-                } catch (e) {
-                    console.warn('Notifikasi UART tidak aktif (opsional):', e);
-                }
-
-                isBluetoothConnected = true;
-                isSimulated = false;
-                updateBluetoothUI(true, false);
-                addLog('Bluetooth Connected', 'Terhubung ke ' + (bleDevice.name || 'Micro:bit'), 'emerald');
-                showNotification('Berhasil terhubung ke Micro:bit via Bluetooth!', 'success');
-            } catch (error) {
-                console.error('Bluetooth connection failed:', error);
-                if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
-                resetBleState();
-                const reason = describeBleError(error);
-                addLog('Bluetooth Error', reason, 'slate');
-                showNotification(reason, 'warning');
-            } finally {
-                isConnecting = false;
-            }
-        }
-
-        function startDemoMode() {
-            if (isBluetoothConnected) return;
-            isBluetoothConnected = true;
-            isSimulated = true;
-            updateBluetoothUI(true, true);
-            addLog('Demo Mode', 'Mode simulasi aktif. Tidak ada data yang dikirim ke robot.', 'emerald');
-            showNotification('Mode demo aktif (tanpa perangkat).', 'info');
-        }
-
-        function updateBluetoothUI(connected, simulated = false) {
-            const btBadge = document.getElementById('bt-status-badge');
-            const btBtn = document.getElementById('microbit-connect-btn');
-            const btBtnLabel = btBtn ? btBtn.querySelector('span') : null;
-            const panelBtn = document.getElementById('bt-panel-connect-btn');
-            const dashLabel = document.getElementById('dash-bt-label');
-            const btPanelLabel = document.getElementById('bt-panel-status');
-
-            if (connected) {
-                btBadge.className = "px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700 flex items-center space-x-2 transition-all";
-                btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>BT: ${simulated ? 'DEMO' : 'CONNECTED'}</span>`;
-                if(btBtn) {
-                    btBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer";
-                }
-                if(btBtnLabel) btBtnLabel.innerText = "DISCONNECT";
-                if(panelBtn) panelBtn.innerText = "Disconnect";
-                if(dashLabel) dashLabel.innerText = simulated ? "Demo" : "Connected";
-                if(btPanelLabel) btPanelLabel.innerText = simulated ? "Demo Mode" : "Micro:bit Connected";
-            } else {
-                btBadge.className = "px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 flex items-center space-x-2 transition-all";
-                btBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span><span>BT: OFFLINE</span>`;
-                if(btBtn) {
-                    btBtn.className = "bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center space-x-2 cursor-pointer";
-                }
-                if(btBtnLabel) btBtnLabel.innerText = "MICRO:BIT";
-                if(panelBtn) panelBtn.innerText = "Connect";
-                if(dashLabel) dashLabel.innerText = "Disconnected";
-                if(btPanelLabel) btPanelLabel.innerText = "Micro:bit Disconnected";
-            }
-        }
-
-        // Send one text line (terminated with \n) to the micro:bit UART, chunked to 20 bytes.
-        function sendToMicrobit(text, silent = false) {
-            if (!isBluetoothConnected) {
-                if (!silent) showNotification('Belum terhubung ke Micro:bit. Klik tombol MICRO:BIT dulu.', 'warning');
-                return Promise.resolve(false);
-            }
-            if (isSimulated) return Promise.resolve(true);
-
-            const data = new TextEncoder().encode(text + '\n');
-            writeQueue = writeQueue.then(async () => {
-                for (let i = 0; i < data.length; i += 20) {
-                    await bleRx.writeValue(data.slice(i, i + 20));
-                }
-                return true;
-            }).catch(err => {
-                console.error('Gagal mengirim data:', err);
-                addLog('Send Error', 'Gagal mengirim: ' + (err.message || err), 'slate');
-                return false;
-            });
-            return writeQueue;
-        }
-
-        async function sendControllerCmd(direction) {
-            const cmdText = btMapping[direction] || direction.toLowerCase();
-            const ok = await sendToMicrobit(cmdText);
-            if (ok) {
-                addLog('BT Command', `Direction: ${direction} -> Payload: ${cmdText}${isSimulated ? ' (demo)' : ''}`, 'blue');
-            }
-        }
-
-        // Hold-to-move buttons: pressing sends the command, releasing sends STOP
-        function pressControl(direction) {
-            if (direction !== 'STOP') heldControl = direction;
-            sendControllerCmd(direction);
-        }
-
-        function releaseControl(direction) {
-            if (heldControl !== direction) return;
-            heldControl = null;
-            sendControllerCmd('STOP');
-        }
-
-        function updateSlider(sliderNum, val) {
-            const valEl = document.getElementById(`slider${sliderNum}-val`);
-            if(valEl) valEl.innerText = val;
-
-            const now = Date.now();
-            if (now - (lastSliderSent[sliderNum] || 0) < 120) return;
-            lastSliderSent[sliderNum] = now;
-            sendToMicrobit(`slider${sliderNum}:${val}`, true);
-        }
-
-        function sendUartCommand() {
-            const input = document.getElementById('uart-input');
-            const val = input ? input.value.trim() : '';
-            if(!val) {
-                showNotification('Masukkan perintah UART terlebih dahulu', 'warning');
-                return;
-            }
-            sendToMicrobit(val).then(ok => {
-                if (ok) addLog('UART Sent', `Command: ${val}`, 'blue');
-            });
-        }
-
-        function toggleAutoSend() {
-            const tgl = document.getElementById('auto-send-toggle');
-            autoSendEnabled = tgl ? tgl.checked : true;
-            lastVisionLabel = null;
-            showNotification(`IoT Auto-Send ${autoSendEnabled ? 'diaktifkan' : 'dimatikan'}`, 'info');
-        }
-
-        // Send the top prediction to the robot when confident and when it changes
-        function handleVisionAutoSend(top) {
-            if (!autoSendEnabled || !isBluetoothConnected) return;
-            if (top.probability * 100 < confidenceThreshold) return;
-            const label = String(top.className).trim().toUpperCase();
-            if (!Object.prototype.hasOwnProperty.call(btMapping, label)) return;
-            if (label === lastVisionLabel) return;
-            const now = Date.now();
-            if (now - lastVisionSent < 300) return;
-            lastVisionLabel = label;
-            lastVisionSent = now;
-            sendControllerCmd(label);
-        }
-
-        function saveSettings() {
-            const th = document.getElementById('setting-threshold');
-            const v = th ? parseInt(th.value, 10) : NaN;
-            if (!isNaN(v) && v >= 1 && v <= 100) confidenceThreshold = v;
-            const sa = document.getElementById('setting-show-all');
-            if (sa) showAllDevices = sa.checked;
-            showNotification('Pengaturan berhasil disimpan!', 'success');
-        }
-
-        function addLog(title, desc, type = 'purple') {
-            const container = document.getElementById('activity-log-container');
-            if(!container) return;
-
-            const icons = {
-                'purple': '<i class="fa-solid fa-eye text-sm"></i>',
-                'emerald': '<i class="fa-solid fa-circle-check text-sm"></i>',
-                'slate': '<i class="fa-solid fa-video-slash text-sm"></i>',
-                'blue': '<i class="fa-solid fa-bolt text-sm"></i>'
-            };
-            const bgColors = {
-                'purple': 'bg-purple-50 text-purple-600',
-                'emerald': 'bg-emerald-50 text-emerald-600',
-                'slate': 'bg-slate-100 text-slate-500',
-                'blue': 'bg-blue-50 text-blue-600'
-            };
-
-            const logItem = document.createElement('div');
-            logItem.className = "bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start space-x-3.5 transition-all hover:shadow-md";
-            logItem.innerHTML = `
-                <div class="w-8 h-8 rounded-xl ${bgColors[type]} flex items-center justify-center flex-shrink-0 mt-0.5">
-                    ${icons[type]}
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="text-sm font-bold text-slate-800">${title}</div>
-                    <div class="text-xs text-slate-500 mt-0.5 truncate">${desc}</div>
-                </div>
-            `;
-            container.prepend(logItem);
-
-            if (container.children.length > 10) {
-                container.removeChild(container.lastChild);
-            }
-        }
-
-        function clearLogs() {
-            const container = document.getElementById('activity-log-container');
-            if(container) container.innerHTML = '';
-            showNotification('Log aktivitas dibersihkan', 'info');
-        }
-
-        function showNotification(message, type = 'info') {
-            const modal = document.getElementById('notification-modal');
-            const text = document.getElementById('notif-text');
-            const icon = document.getElementById('notif-icon');
-            if(!modal) return;
-
-            text.innerText = message;
-            if (type === 'success') {
-                icon.className = "fa-solid fa-circle-check text-emerald-400";
-            } else if (type === 'warning') {
-                icon.className = "fa-solid fa-triangle-exclamation text-amber-400";
-            } else {
-                icon.className = "fa-solid fa-circle-info text-blue-400";
-            }
-
-            modal.classList.remove('translate-y-20', 'opacity-0');
-            setTimeout(() => {
-                modal.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
-        }
-    </script>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>
+(()=>{
+const {useState,useRef,useEffect,useCallback,useMemo,createContext,useContext}=React;
+const h=React.createElement;
+
+/* ---------- icons (Lucide paths) ---------- */
+const P={
+ dash:'M3 3h7v9H3z|M14 3h7v5h-7z|M14 12h7v9h-7z|M3 16h7v5H3z',
+ pad:'M6 12h4|M8 10v4|M15 13h.01|M18 11h.01|M17.3 5H6.7a4 4 0 0 0-3.9 3.2L2 16a3 3 0 0 0 5.2 2l1.6-2h6.4l1.6 2A3 3 0 0 0 22 16l-.8-7.8A4 4 0 0 0 17.3 5z',
+ cog:'M4 21v-7|M4 10V3|M12 21v-9|M12 8V3|M20 21v-5|M20 12V3|M1 14h6|M9 8h6|M17 16h6',
+ bt:'m7 7 10 10-5 5V2l5 5L7 17',
+ up:'m18 15-6-6-6 6',down:'m6 9 6 6 6-6',left:'m15 18-6-6 6-6',right:'m9 18 6-6-6-6',
+ stop:'M6 6h12v12H6z',vol:'M11 5 6 9H2v6h4l5 4z|M15.5 8.5a5 5 0 0 1 0 7',
+ x:'M18 6 6 18|M6 6l12 12',
+ bot:'M12 8V4H8|M4 12h16v8H4z|M2 14h2|M20 14h2|M15 13v2|M9 13v2',
+ act:'M22 12h-4l-3 9L9 3l-3 9H2',
+ cpu:'M6 6h12v12H6z|M9 2v2|M15 2v2|M9 20v2|M15 20v2|M2 9h2|M2 15h2|M20 9h2|M20 15h2',
+ radio:'M4.9 19.1C1 15.2 1 8.8 4.9 4.9|M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5|M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5|M19.1 4.9C23 8.8 23 15.1 19.1 19',
+ send:'m22 2-7 20-4-9-9-4z|M22 2 11 13',
+ shield:'M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z',
+ warn:'m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3|M12 9v4|M12 17h.01',
+ info:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20|M12 16v-4|M12 8h.01',
+ rot:'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8|M3 3v5h5',
+ batt:'M22 14v-4|M2 8h16v8H2z'
+};
+const Icon=({n,s=18,c=''})=>h('svg',{width:s,height:s,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',className:c,'aria-hidden':true},...P[n].split('|').map(d=>h('path',{key:d,d})));
+
+/* ---------- Web Bluetooth link (micro:bit Nordic UART) ---------- */
+const UART='6e400001-b5a3-f393-e0a9-e50e24dcca9e',RXC='6e400002-b5a3-f393-e0a9-e50e24dcca9e',TXC='6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const enc=new TextEncoder(),dec=new TextDecoder(),wait=ms=>new Promise(r=>setTimeout(r,ms));
+class MicroLink{
+ static get supported(){return 'bluetooth' in navigator}
+ constructor(cb){Object.assign(this,cb);this.pending=new Map();this.busy=false;this.seq=0}
+ async connect(){
+  this.device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'BBC micro:bit'},{services:[UART]}],optionalServices:[UART,'battery_service']});
+  this.device.addEventListener('gattserverdisconnected',()=>{this.pending.clear();this.onDisconnect&&this.onDisconnect()});
+  const srv=await this.device.gatt.connect(),svc=await srv.getPrimaryService(UART);
+  // micro:bit UART characteristics are the reverse of Nordic's naming, so pick them by what they can do.
+  const chars=await svc.getCharacteristics();
+  const tx=chars.find(c=>c.properties.notify||c.properties.indicate),rx=chars.find(c=>c.properties.write||c.properties.writeWithoutResponse);
+  if(!tx||!rx)throw new Error('UART service found, but it has no notify/write characteristics. Re-flash the LOFI MakeCode program.');
+  this.rx=rx;
+  tx.addEventListener('characteristicvaluechanged',e=>{const t=dec.decode(e.target.value).trim();if(t&&this.onData)this.onData(t)});
+  await tx.startNotifications();
+  let battery=null;
+  try{const b=await srv.getPrimaryService('battery_service');battery=(await(await b.getCharacteristic('battery_level')).readValue()).getUint8(0)}catch(_){}
+  return{name:this.device.name||'micro:bit',battery};
+ }
+ disconnect(){this.pending.clear();if(this.device&&this.device.gatt.connected)this.device.gatt.disconnect()}
+ send(t,key){this.pending.set(key==null?'_'+this.seq++:key,t);this.flush()}
+ async flush(){
+  if(this.busy)return;this.busy=true;
+  while(this.pending.size){
+   const [k,v]=this.pending.entries().next().value;this.pending.delete(k);
+   if(!this.device.gatt.connected){this.pending.clear();break}
+   try{const d=enc.encode(v);this.rx.properties.writeWithoutResponse&&this.rx.writeValueWithoutResponse?await this.rx.writeValueWithoutResponse(d):await this.rx.writeValue(d)}catch(e){this.onError&&this.onError(e.message)}
+   await wait(25);
+  }
+  this.busy=false;
+ }
+}
+
+/* ---------- state: preferences + micro connection ---------- */
+const DEF={speed:70,keyboard:true,newline:true},PK='lofi.prefs.v1';
+const PrefsCtx=createContext(),MicroCtx=createContext();
+const usePrefs=()=>useContext(PrefsCtx),useMicro=()=>useContext(MicroCtx);
+function PrefsProvider({children}){
+ const [prefs,set]=useState(()=>{try{return{...DEF,...JSON.parse(localStorage.getItem(PK)||'{}')}}catch(_){return DEF}});
+ useEffect(()=>{try{localStorage.setItem(PK,JSON.stringify(prefs))}catch(_){}},[prefs]);
+ const v=useMemo(()=>({prefs,setPref:(k,x)=>set(p=>({...p,[k]:x})),reset:()=>set(DEF)}),[prefs]);
+ return h(PrefsCtx.Provider,{value:v},children);
+}
+function MicroProvider({children}){
+ const {prefs}=usePrefs();
+ const nl=useRef(prefs.newline);nl.current=prefs.newline;
+ const link=useRef(null),lid=useRef(0);
+ const [status,setStatus]=useState('disconnected'),[name,setName]=useState(null),[battery,setBattery]=useState(null),[error,setError]=useState(null),[sent,setSent]=useState(0),[log,setLog]=useState([]);
+ const push=useCallback((type,text)=>setLog(l=>[{id:++lid.current,time:new Date(),type,text},...l].slice(0,60)),[]);
+ const connect=useCallback(async()=>{
+  if(!MicroLink.supported){setStatus('error');setError('Web Bluetooth is not available here. Use Chrome or Edge (desktop/Android) over https, or Bluefy on iOS.');return}
+  setError(null);
+  const l=new MicroLink({onData:t=>push('rx',t),onError:m=>push('error',m),onDisconnect:()=>{link.current=null;setStatus('disconnected');setName(null);setBattery(null);push('event','Disconnected')}});
+  try{
+   setStatus('connecting');const i=await l.connect();
+   link.current=l;setName(i.name);setBattery(i.battery);setStatus('connected');push('event','Connected to '+i.name);
+  }catch(e){
+   l.disconnect();
+   if(e.name==='NotFoundError'){setStatus('disconnected');push('event','Device selection cancelled');return}
+   const blocked=e.name==='SecurityError'||e.name==='NotAllowedError';
+   const m=blocked?'Bluetooth access was blocked. If this page is embedded in a preview, open it in its own browser tab. ('+e.message+')':e.message;
+   setStatus('error');setError(m);push('error',m);
+  }
+ },[push]);
+ const disconnect=useCallback(()=>link.current&&link.current.disconnect(),[]);
+ const send=useCallback((cmd,o={})=>{
+  if(!link.current)return false;
+  link.current.send(cmd+(nl.current?'\n':''),o.key);setSent(n=>n+1);
+  if(o.log!==false)push('tx',cmd);return true;
+ },[push]);
+ useEffect(()=>()=>link.current&&link.current.disconnect(),[]);
+ const v=useMemo(()=>({status,name,battery,error,sent,log,connect,disconnect,send,supported:MicroLink.supported,connected:status==='connected'}),[status,name,battery,error,sent,log,connect,disconnect,send]);
+ return h(MicroCtx.Provider,{value:v},children);
+}
+
+/* ---------- shared UI ---------- */
+const Card=({title,icon,className='',children})=>h('section',{className:'glass p-5 '+className},
+ title&&h('h2',{className:'mb-4 flex items-center gap-2 text-sm font-semibold text-slate-100'},icon&&h(Icon,{n:icon,s:16,c:'text-neon'}),title),children);
+const TONE={connected:['bg-emerald-400','text-emerald-300','Connected'],connecting:['bg-amber-400 animate-pulse','text-amber-300','Connecting…'],disconnected:['bg-slate-500','text-slate-400','Disconnected'],error:['bg-rose-400','text-rose-300','Error']};
+const Badge=({status})=>{const [d,t,l]=TONE[status];return h('span',{className:'inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium '+t},h('span',{className:'h-2 w-2 rounded-full '+d}),l)};
+const Stat=({icon,label,value,hint})=>h('div',{className:'glass p-4 hover:-translate-y-0.5'},
+ h('div',{className:'mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-electric/30 to-violet/30 text-neon'},h(Icon,{n:icon})),
+ h('p',{className:'text-xs text-slate-400'},label),h('p',{className:'mt-0.5 truncate text-xl font-semibold text-white'},value),h('p',{className:'mt-1 truncate text-xs text-slate-500'},hint));
+const Toggle=({checked,onChange,label,desc})=>h('div',{className:'flex items-center justify-between gap-4 py-3'},
+ h('div',null,h('p',{className:'text-sm font-medium text-slate-100'},label),h('p',{className:'text-xs text-slate-400'},desc)),
+ h('button',{role:'switch','aria-checked':checked,'aria-label':label,onClick:()=>onChange(!checked),className:'relative h-6 w-11 shrink-0 rounded-full transition '+(checked?'bg-electric':'bg-white/15')},
+  h('span',{className:'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all '+(checked?'left-[22px]':'left-0.5')})));
+function ConnectionControls(){
+ const m=useMicro(),busy=m.status==='connecting';
+ return h('div',{className:'flex flex-wrap gap-2'},
+  h('button',{className:'btn btn-p',onClick:m.connect,disabled:busy||m.connected},h(Icon,{n:'bt',s:16}),busy?'Connecting…':'Connect Micro'),
+  h('button',{className:'btn btn-g',onClick:m.disconnect,disabled:!m.connected},h(Icon,{n:'x',s:16}),'Disconnect'));
+}
+function ErrorBanner(){
+ const m=useMicro(),msg=m.error||(!m.supported&&'Web Bluetooth is not available in this browser. Use Chrome or Edge over https, or Bluefy on iOS.');
+ return msg?h('div',{role:'alert',className:'flex items-start gap-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200'},h(Icon,{n:'warn',c:'mt-0.5 shrink-0'}),h('p',null,msg)):null;
+}
+const Head=({title,sub,children})=>h('header',{className:'flex flex-wrap items-start justify-between gap-4'},
+ h('div',null,h('h1',{className:'text-3xl font-bold tracking-tight text-white'},title),h('p',{className:'mt-1 text-slate-400'},sub)),children);
+
+/* ---------- controller widgets ---------- */
+function Joystick({label,onChange,disabled,accent,size=200}){
+ const base=useRef(null),[pos,setPos]=useState({x:0,y:0}),[on,setOn]=useState(false),R=size/2-32;
+ const upd=e=>{
+  const r=base.current.getBoundingClientRect();let dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);
+  const d=Math.hypot(dx,dy);if(d>R){dx*=R/d;dy*=R/d}
+  const n={x:dx/R,y:-dy/R};setPos(n);onChange(n);
+ };
+ const rel=()=>{if(!on)return;setOn(false);setPos({x:0,y:0});onChange({x:0,y:0})};
+ const col=accent==='violet'?'#8b5cf6':'#22d3ee';
+ return h('div',{className:'flex flex-col items-center gap-3'},
+  h('div',{ref:base,role:'application','aria-label':label+' joystick',className:'nt relative rounded-full border border-white/10 '+(disabled?'opacity-40':'cursor-grab'),style:{width:size,height:size,background:'linear-gradient(180deg,rgba(255,255,255,.06),transparent)'},
+   onPointerDown:e=>{if(disabled)return;e.currentTarget.setPointerCapture(e.pointerId);setOn(true);upd(e)},onPointerMove:e=>on&&upd(e),onPointerUp:rel,onPointerCancel:rel},
+   h('div',{className:'absolute inset-4 rounded-full border border-dashed border-white/10'}),
+   h('div',{className:'absolute left-1/2 top-4 h-[calc(100%-2rem)] w-px bg-white/10'}),
+   h('div',{className:'absolute left-4 top-1/2 h-px w-[calc(100%-2rem)] bg-white/10'}),
+   h('div',{className:'absolute left-1/2 top-1/2 h-16 w-16 -ml-8 -mt-8 rounded-full bg-ink',style:{border:'2px solid '+col,boxShadow:'0 0 24px '+col+'66',transform:`translate(${pos.x*R}px,${-pos.y*R}px)`,transition:on?'none':'transform .2s'}})),
+  h('p',{className:'font-mono text-xs text-slate-400'},`${label} · x ${pos.x.toFixed(2)} · y ${pos.y.toFixed(2)}`));
+}
+const Slider=({label,ch,value,min=0,max=180,onChange,disabled})=>h('div',null,
+ h('div',{className:'mb-2 flex items-baseline justify-between'},h('label',{htmlFor:'s'+label,className:'text-sm font-medium text-slate-100'},label),h('span',{className:'font-mono text-xs text-neon'},ch+value)),
+ h('input',{id:'s'+label,type:'range',min,max,value,disabled,onChange:e=>onChange(+e.target.value)}));
+function DPad({dir,onDir,onHorn,onStop,disabled}){
+ const cell='nt flex h-14 w-14 items-center justify-center rounded-xl border transition active:scale-95 disabled:opacity-40 ';
+ const b=(d,pos)=>h('button',{key:d,'aria-label':d,disabled,className:cell+pos+' '+(dir===d?'border-neon bg-neon/20 text-neon':'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'),
+  onPointerDown:()=>onDir(d),onPointerUp:()=>onDir('stop'),onPointerLeave:()=>dir===d&&onDir('stop'),onPointerCancel:()=>onDir('stop')},h(Icon,{n:d,s:24}));
+ return h('div',{className:'flex flex-col items-center gap-4'},
+  h('div',{className:'grid grid-cols-3 gap-2'},b('up','col-start-2'),b('left','col-start-1 row-start-2'),
+   h('button',{'aria-label':'Stop',disabled,onClick:onStop,className:cell+'col-start-2 row-start-2 border-rose-400/40 bg-rose-500/15 text-rose-300'},h(Icon,{n:'stop',s:18})),
+   b('right','col-start-3 row-start-2'),b('down','col-start-2 row-start-3')),
+  h('button',{disabled,className:'btn btn-g nt',onPointerDown:()=>onHorn(true),onPointerUp:()=>onHorn(false),onPointerLeave:()=>onHorn(false)},h(Icon,{n:'vol',s:16}),'Hold for horn'));
+}
+
+/* ---------- pages (one per tab) ---------- */
+const LS={tx:'text-cyan-300',rx:'text-violet-300',event:'text-slate-300',error:'text-rose-300'},LL={tx:'sent',rx:'received',event:'event',error:'error'};
+const Row=(k,v)=>h('div',{key:k,className:'flex items-center justify-between gap-3 border-b border-white/5 pb-2 last:border-0'},h('dt',{className:'text-slate-400'},k),h('dd',{className:'truncate text-slate-100'},v));
+
+function DashboardPage({navigate}){
+ const m=useMicro();
+ const sys=!m.supported?'Unsupported':m.status==='error'?'Error':m.status==='connecting'?'Connecting':'Ready';
+ return h('div',{className:'space-y-6'},
+  h(Head,{title:'Welcome to LOFI Control',sub:'Your smart control center for Micro.'},h(Badge,{status:m.status})),
+  h(ErrorBanner),
+  h('div',{className:'grid grid-cols-2 gap-4 lg:grid-cols-4'},
+   h(Stat,{icon:'cpu',label:'Device status',value:m.connected?'Online':'Offline',hint:m.name||'No device paired'}),
+   h(Stat,{icon:'radio',label:'Connection type',value:m.connected?'Bluetooth LE':'—',hint:m.connected?'Nordic UART service':'Not connected'}),
+   h(Stat,{icon:'send',label:'Commands sent',value:m.sent,hint:'This session'}),
+   h(Stat,{icon:'shield',label:'System status',value:sys,hint:m.supported?'Web Bluetooth available':'Web Bluetooth missing'})),
+  h('div',{className:'grid gap-4 lg:grid-cols-3'},
+   h(Card,{title:'Device overview',icon:'cpu'},h('dl',{className:'space-y-3 text-sm'},
+    Row('Device',m.name||'Not connected'),Row('Bluetooth',m.connected?'Connected':m.status==='connecting'?'Pairing…':'Disconnected'),
+    Row('Battery',m.battery!=null?m.battery+'%':m.connected?'Not reported by firmware':'—'))),
+   h(Card,{title:'Quick controls',icon:'pad',className:'lg:col-span-2'},
+    h('div',{className:'flex flex-wrap items-center gap-2'},h(ConnectionControls),h('button',{className:'btn btn-g',onClick:()=>navigate('controller')},h(Icon,{n:'pad',s:16}),'Open Controller')),
+    h('p',{className:'mt-3 text-xs text-slate-500'},'The Micro must run the LOFI UART Bluetooth program with “No pairing required”.'))),
+  h(Card,{title:'Live activity',icon:'act'},m.log.length===0
+   ?h('p',{className:'py-6 text-sm text-slate-500'},'No activity yet. Connect your Micro to begin.')
+   :h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs'},m.log.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
+     h('time',{className:'shrink-0 text-slate-500'},e.time.toLocaleTimeString([],{hour12:false})),h('span',{className:'w-16 shrink-0 '+LS[e.type]},LL[e.type]),h('span',{className:'min-w-0 break-words text-slate-200'},e.text))))));
+}
+
+const KEYS={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
+function ControllerPage(){
+ const {status,connected,send,connect}=useMicro(),{prefs,setPref}=usePrefs();
+ const [dir,setDirS]=useState('stop'),[sl,setSl]=useState({c:90,x:90});
+ const lastDir=useRef('stop'),lastSl=useRef({});
+ // Protocol: up/down/left/right/horn/stop · slider 1 = c0..c180 · slider 2 = x0..x180
+ const setDir=useCallback(d=>{if(lastDir.current===d)return;lastDir.current=d;setDirS(d);send(d,{key:'dir'})},[send]);
+ const setSlider=useCallback((ch,v)=>{if(lastSl.current[ch]===v)return;lastSl.current[ch]=v;setSl(s=>({...s,[ch]:v}));send(ch+v,{key:ch,log:false})},[send]);
+ useEffect(()=>{lastDir.current='stop';lastSl.current={};setDirS('stop')},[connected]);
+ const onLeft=({x,y})=>Math.hypot(x,y)<.35?setDir('stop'):setDir(Math.abs(x)>Math.abs(y)?(x>0?'right':'left'):(y>0?'up':'down'));
+ const onRight=({x,y})=>{const k=prefs.speed/100;setSlider('c',Math.round(90+x*90*k));setSlider('x',Math.round(90+y*90*k))};
+ useEffect(()=>{
+  if(!connected||!prefs.keyboard)return;
+  const typing=e=>e.target.tagName==='INPUT'&&e.target.type!=='range';
+  const dn=e=>{if(KEYS[e.key]&&!e.repeat&&!typing(e)){e.preventDefault();setDir(KEYS[e.key])}};
+  const up=e=>{if(KEYS[e.key]&&!typing(e))setDir('stop')};
+  addEventListener('keydown',dn);addEventListener('keyup',up);
+  return()=>{removeEventListener('keydown',dn);removeEventListener('keyup',up)};
+ },[connected,prefs.keyboard,setDir]);
+ const off=!connected;
+ return h('div',{className:'space-y-6'},
+  h(Head,{title:'Micro Controller',sub:'Drive with the left stick, steer servos with the right stick or sliders.'},
+   h('div',{className:'flex flex-wrap items-center gap-3'},h(Badge,{status}),h(ConnectionControls))),
+  h(ErrorBanner),
+  off&&h('div',{className:'glass flex flex-wrap items-center justify-between gap-3 p-4 text-sm'},h('p',{className:'text-slate-300'},'Controls are locked until a Micro is connected over Bluetooth.'),
+   h('button',{className:'btn btn-p',onClick:connect,disabled:status==='connecting'},h(Icon,{n:'bt',s:16}),'Connect Micro')),
+  h('div',{className:'grid gap-4 lg:grid-cols-3'},
+   h(Card,{title:'Movement',className:'flex flex-col items-center'},h(Joystick,{label:'Left',onChange:onLeft,disabled:off}),h('p',{className:'mt-3 text-xs text-slate-400'},'Sends ',h('span',{className:'font-mono text-neon'},dir))),
+   h(Card,{title:'Directional pad',className:'flex flex-col items-center justify-between gap-6'},
+    h(DPad,{dir,onDir:setDir,onHorn:d=>send(d?'horn':'stop',{key:'horn'}),onStop:()=>setDir('stop'),disabled:off}),
+    h('button',{className:'btn btn-d w-full',disabled:off,onClick:()=>{lastDir.current='';setDir('stop')}},h(Icon,{n:'stop',s:14}),'Stop')),
+   h(Card,{title:'Actions',className:'flex flex-col items-center'},h(Joystick,{label:'Right',accent:'violet',onChange:onRight,disabled:off}),
+    h('p',{className:'mt-3 text-xs text-slate-400'},'X → c'+sl.c+' · Y → x'+sl.x))),
+  h('div',{className:'grid gap-4 md:grid-cols-2'},
+   h(Card,{title:'Sliders (0–180)',className:'space-y-5'},h(Slider,{label:'Slider 1',ch:'c',value:sl.c,onChange:v=>setSlider('c',v),disabled:off}),h(Slider,{label:'Slider 2',ch:'x',value:sl.x,onChange:v=>setSlider('x',v),disabled:off})),
+   h(Card,{title:'Speed',icon:'act'},h(Slider,{label:'Right stick range',ch:'',value:prefs.speed,min:10,max:100,onChange:v=>setPref('speed',v)}),
+    h('p',{className:'mt-3 text-xs text-slate-500'},'Limits how far the right stick moves the sliders from 90. Saved on this device.'))));
+}
+
+function SettingsPage(){
+ const {prefs,setPref,reset}=usePrefs();
+ return h('div',{className:'space-y-6'},h(Head,{title:'Settings',sub:'Preferences are saved in this browser.'}),
+  h(Card,{title:'Controller',className:'max-w-2xl'},
+   h(Toggle,{label:'Keyboard arrows',desc:'Drive with the arrow keys while connected.',checked:prefs.keyboard,onChange:v=>setPref('keyboard',v)}),
+   h(Toggle,{label:'Append newline to commands',desc:'Most MakeCode UART programs expect a newline. Turn off if yours does not.',checked:prefs.newline,onChange:v=>setPref('newline',v)}),
+   h('div',{className:'pt-3'},h('button',{className:'btn btn-g',onClick:reset},h(Icon,{n:'rot',s:16}),'Reset preferences'))));
+}
+
+/* ---------- tab registry: add one entry to add a tab ---------- */
+const TABS=[
+ {id:'dashboard',label:'Dashboard',icon:'dash',component:DashboardPage},
+ {id:'controller',label:'Micro Controller',icon:'pad',component:ControllerPage},
+ {id:'settings',label:'Settings',icon:'cog',component:SettingsPage}
+];
+
+function Sidebar({active,onSelect}){
+ const item=(t,mobile)=>{const on=t.id===active;return h('button',{key:t.id,onClick:()=>onSelect(t.id),'aria-current':on?'page':undefined,
+  className:mobile?'flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-medium transition '+(on?'text-neon':'text-slate-400')
+   :'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition '+(on?'bg-gradient-to-r from-electric/25 to-neon/10 text-white ring-1 ring-neon/30':'text-slate-400 hover:bg-white/5 hover:text-white')},
+  h(Icon,{n:t.icon,s:mobile?20:18,c:on?'text-neon':''}),mobile?t.label.replace('Micro ',''):t.label)};
+ return h(React.Fragment,null,
+  h('aside',{className:'glass fixed inset-y-0 left-0 z-30 hidden w-64 flex-col !rounded-none border-y-0 border-l-0 p-4 md:flex'},
+   h('div',{className:'mb-8 flex items-center gap-3 px-2 pt-2'},
+    h('div',{className:'flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-electric via-neon to-violet text-ink'},h(Icon,{n:'bot',s:22})),
+    h('div',null,h('p',{className:'text-lg font-bold leading-none text-white'},'LOFI'),h('p',{className:'mt-1 text-xs text-slate-400'},'Micro Control'))),
+   h('nav',{className:'flex flex-1 flex-col gap-1','aria-label':'Main'},TABS.map(t=>item(t,false))),
+   h('a',{href:'https://cardboard.lofirobot.com/microbit-control-app-info/',target:'_blank',rel:'noreferrer',className:'flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition hover:border-white/20'},
+    h('div',{className:'flex h-9 w-9 items-center justify-center rounded-full bg-violet/30 text-violet-200'},h(Icon,{n:'info',s:16})),
+    h('div',{className:'min-w-0'},h('p',{className:'truncate text-sm font-medium text-white'},'LOFI Operator'),h('p',{className:'text-xs text-slate-400'},'About · v1.0')))),
+  h('nav',{className:'glass fixed inset-x-0 bottom-0 z-30 flex justify-around !rounded-none border-x-0 border-b-0 px-2 pt-2 md:hidden',style:{paddingBottom:'env(safe-area-inset-bottom,0px)'},'aria-label':'Main'},TABS.map(t=>item(t,true))));
+}
+
+function App(){
+ const [active,setActive]=useState(TABS[0].id); // Dashboard is the default
+ const Page=(TABS.find(t=>t.id===active)||TABS[0]).component;
+ return h('div',{className:'min-h-screen'},h(Sidebar,{active,onSelect:setActive}),
+  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{key:active,className:'page mx-auto max-w-6xl p-4 sm:p-6 lg:p-8'},h(Page,{navigate:setActive}))));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(PrefsProvider,null,h(MicroProvider,null,h(App))));
+})();
+</script>
 </body>
 </html>
