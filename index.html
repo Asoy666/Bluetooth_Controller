@@ -27,6 +27,21 @@ input[type=range]{height:.5rem;width:100%;cursor:pointer;-webkit-appearance:none
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:1.25rem;width:1.25rem;border-radius:9999px;border:2px solid #22d3ee;background:#060914;box-shadow:0 0 12px rgba(34,211,238,.6)}
 input[type=range]::-moz-range-thumb{height:1.25rem;width:1.25rem;border-radius:9999px;border:2px solid #22d3ee;background:#060914}
 input[type=range]:disabled{opacity:.4;cursor:not-allowed}
+.tp-btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;min-height:9rem;border-radius:1rem;border:1px solid rgba(255,255,255,.12);font-weight:700;letter-spacing:.08em;cursor:pointer;transition:transform .2s,box-shadow .25s,border-color .2s,background .2s}
+.tp-btn:hover:not(:disabled){transform:translateY(-2px)}.tp-btn:active:not(:disabled){transform:scale(.97)}
+.tp-btn:disabled{opacity:.4;cursor:not-allowed}
+.tp-open{background:linear-gradient(160deg,rgba(34,211,238,.22),rgba(34,211,238,.05));color:#a5f3fc}
+.tp-open:hover:not(:disabled){border-color:rgba(34,211,238,.7);box-shadow:0 0 28px rgba(34,211,238,.35)}
+.tp-close{background:linear-gradient(160deg,rgba(59,130,246,.25),rgba(59,130,246,.05));color:#bfdbfe}
+.tp-close:hover:not(:disabled){border-color:rgba(59,130,246,.8);box-shadow:0 0 28px rgba(59,130,246,.4)}
+.tp-on.tp-open{border-color:#22d3ee;box-shadow:0 0 32px rgba(34,211,238,.45)}
+.tp-on.tp-close{border-color:#3b82f6;box-shadow:0 0 32px rgba(59,130,246,.5)}
+.tp-dot{height:1rem;width:1rem;border-radius:9999px;transition:background .25s,box-shadow .25s}
+.inp{width:100%;border-radius:.75rem;border:1px solid rgba(255,255,255,.12);background:rgba(6,9,20,.6);padding:.55rem .75rem;font:500 .875rem/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:#e2e8f0;transition:border-color .2s,box-shadow .2s}
+.inp:focus{outline:none;border-color:rgba(34,211,238,.7);box-shadow:0 0 0 3px rgba(34,211,238,.15)}
+.inp.bad{border-color:rgba(251,113,133,.65)}.inp::placeholder{color:#64748b}
+.actionbar{position:sticky;bottom:calc(4.75rem + env(safe-area-inset-bottom,0px));z-index:20}
+@media (min-width:768px){.actionbar{bottom:1rem}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -57,19 +72,85 @@ const P={
  warn:'m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3|M12 9v4|M12 17h.01',
  info:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20|M12 16v-4|M12 8h.01',
  rot:'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8|M3 3v5h5',
- batt:'M22 14v-4|M2 8h16v8H2z'
+ batt:'M22 14v-4|M2 8h16v8H2z',
+ expand:'M15 3h6v6|M9 21H3v-6|M21 3l-7 7|M3 21l7-7',
+ shrink:'M4 14h6v6|M20 10h-6V4|M14 10l7-7|M3 21l7-7',
+ term:'m4 17 6-6-6-6|M12 19h8',check:'M20 6 9 17l-5-5',
+ save:'M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7|M7 3v4a1 1 0 0 0 1 1h7'
 };
 const Icon=({n,s=18,c=''})=>h('svg',{width:s,height:s,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',className:c,'aria-hidden':true},...P[n].split('|').map(d=>h('path',{key:d,d})));
 
 /* ---------- Web Bluetooth link (micro:bit Nordic UART) ---------- */
 const UART='6e400001-b5a3-f393-e0a9-e50e24dcca9e',RXC='6e400002-b5a3-f393-e0a9-e50e24dcca9e',TXC='6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+/* ---------- Micro Data Settings: ONE shared config drives every command the app sends ---------- */
+// TRANSPORTER = factory defaults. The live values are cfg.trans (edited in Micro Data Settings, saved in localStorage).
+const TRANSPORTER={open:'o',close:'c',stop:'s',travelMs:1200,fbOpen:['opened','open'],fbClosed:['closed','close']};
+const CFG_DEF={
+ move:{up:'up',down:'down',left:'left',right:'right',stop:'stop',horn:'horn'},
+ servo:{p1:'c',p2:'x',min1:0,max1:180,min2:0,max2:180,def:90},
+ trans:TRANSPORTER,
+ tx:{newline:true,delim:'',delay:25,log:true,mode:'auto',chunk:20}
+};
+const CK='lofi.cfg.v1',clone=o=>JSON.parse(JSON.stringify(o)),clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const NAMES={up:'Forward',down:'Backward',left:'Left',right:'Right',stop:'Stop',horn:'Horn'};
+const ASCII=/^[\x20-\x7E]+$/,CfgCtx=createContext(),useCfg=()=>useContext(CfgCtx);
+const toForm=c=>({move:{...c.move},servo:Object.fromEntries(Object.entries(c.servo).map(([k,v])=>[k,String(v)])),
+ trans:{open:c.trans.open,close:c.trans.close,stop:c.trans.stop,travelMs:String(c.trans.travelMs),fbOpen:[].concat(c.trans.fbOpen).join(', '),fbClosed:[].concat(c.trans.fbClosed).join(', ')},
+ tx:{newline:!!c.tx.newline,delim:String(c.tx.delim),delay:String(c.tx.delay),log:!!c.tx.log,mode:c.tx.mode,chunk:String(c.tx.chunk)}});
+const num=v=>{const x=+String(v).trim();return Number.isFinite(x)?x:0},list=v=>String(v).split(',').map(a=>a.trim().toLowerCase()).filter(Boolean);
+const fromForm=f=>({move:Object.fromEntries(Object.entries(f.move).map(([k,v])=>[k,String(v)])),
+ servo:{p1:f.servo.p1,p2:f.servo.p2,min1:num(f.servo.min1),max1:num(f.servo.max1),min2:num(f.servo.min2),max2:num(f.servo.max2),def:num(f.servo.def)},
+ trans:{open:f.trans.open,close:f.trans.close,stop:f.trans.stop,travelMs:num(f.trans.travelMs),fbOpen:list(f.trans.fbOpen),fbClosed:list(f.trans.fbClosed)},
+ tx:{newline:!!f.tx.newline,delim:f.tx.delim,delay:num(f.tx.delay),log:!!f.tx.log,mode:f.tx.mode,chunk:num(f.tx.chunk)}});
+const cmdErr=(v,empty)=>{v=String(v);return !v?(empty?null:'Enter a command'):!ASCII.test(v)?'Use printable characters only':v!==v.trim()?'Remove spaces at the start or end':v.length>20?'Use 20 characters or fewer':null};
+const numErr=(v,lo,hi)=>{v=String(v).trim();return !/^\d+$/.test(v)?'Enter a whole number':(+v<lo||+v>hi)?'Use '+lo+' to '+hi:null};
+function validate(f){
+ const e={},w=[],{move:m,servo:s,trans:t,tx:x}=f,E=(k,r)=>{if(r&&!e[k])e[k]=r},seen={};
+ Object.keys(NAMES).forEach(k=>{const r=cmdErr(m[k]);E('move.'+k,r);if(!r){if(seen[m[k]])E('move.'+k,'Already used by '+NAMES[seen[m[k]]]);else seen[m[k]]=k}});
+ ['p1','p2'].forEach(k=>E('servo.'+k,cmdErr(s[k])||(/\d$/.test(s[k])?'Cannot end in a digit; it would merge with the value':null)));
+ if(!e['servo.p1']&&!e['servo.p2']&&s.p1===s.p2)E('servo.p2','Must differ from Slider 1');
+ const R=[['min1','max1'],['min2','max2']];
+ R.forEach(([a,b])=>{E('servo.'+a,numErr(s[a],0,999));E('servo.'+b,numErr(s[b],0,999));if(!e['servo.'+a]&&!e['servo.'+b]&&+s[a]>=+s[b])E('servo.'+b,'Must be above the minimum')});
+ E('servo.def',numErr(s.def,0,999));
+ if(!e['servo.def'])R.forEach(([a,b],i)=>{if(!e['servo.'+a]&&!e['servo.'+b]&&(+s.def<+s[a]||+s.def>+s[b]))E('servo.def','Must sit inside the Slider '+(i+1)+' range')});
+ ['open','close','stop'].forEach(k=>E('trans.'+k,cmdErr(t[k],k==='stop')));
+ ['close','stop'].forEach(k=>{if(t[k]&&t[k]===t.open)E('trans.'+k,'Must differ from Open')});
+ if(t.stop&&t.stop===t.close)E('trans.stop','Must differ from Close');
+ E('trans.travelMs',numErr(t.travelMs,100,30000));
+ const fo=list(t.fbOpen),fc=list(t.fbClosed);
+ [['fbOpen',fo],['fbClosed',fc]].forEach(([k,l])=>E('trans.'+k,l.map(a=>cmdErr(a)).find(Boolean)));
+ const both=fo.find(a=>fc.includes(a));E('trans.fbClosed',both&&'“'+both+'” is in both lists');
+ E('tx.delim',/^[\x21-\x7E]{0,3}$/.test(x.delim)?null:'Use up to 3 visible characters, no spaces');
+ E('tx.delay',numErr(x.delay,0,2000));E('tx.chunk',numErr(x.chunk,1,244));
+ if(!['auto','withResponse','withoutResponse'].includes(x.mode))E('tx.mode','Pick a write mode');
+ const all=[...Object.values(m),s.p1,s.p2,t.open,t.close,t.stop].map(String).filter(Boolean),hit=x.delim&&all.find(c=>c.includes(x.delim));
+ E('tx.delim',hit&&'“'+x.delim+'” appears inside the command “'+hit+'”');
+ if(!x.newline&&!x.delim)w.push('No newline or delimiter: messages run together (“upstop”) and a bare “c” cannot be told apart from “c90”. Your micro must read a continuous stream.');
+ [t.open,t.close,t.stop].filter(c=>c&&Object.values(m).includes(c)).forEach(c=>w.push('“'+c+'” is used by both Movement and Transporter.'));
+ return{errors:e,warnings:[...new Set(w)]};
+}
+// the one place that builds bytes for the micro: used by send() AND by every preview
+const fmtParts=(c,tx,bare)=>{const p=[{k:'cmd',raw:c,show:c}];if(!bare){if(tx.delim)p.push({k:'delim',raw:tx.delim,show:tx.delim});if(tx.newline)p.push({k:'nl',raw:'\n',show:'\\n'})}return p};
+const fmtPayload=(c,tx,bare)=>fmtParts(c,tx,bare).map(p=>p.raw).join('');
+const linkOpts=tx=>({delay:tx.delay,mode:tx.mode,chunk:tx.chunk});
+function CfgProvider({children}){
+ const [cfg,set]=useState(()=>{try{
+  const raw=localStorage.getItem(CK),j=raw?JSON.parse(raw):{},c={};
+  Object.keys(CFG_DEF).forEach(k=>c[k]={...clone(CFG_DEF[k]),...(j[k]&&typeof j[k]==='object'?j[k]:{})});
+  if(!raw){try{if(JSON.parse(localStorage.getItem(PK)||'{}').newline===false)c.tx.newline=false}catch(_){}} // keep the old newline preference
+  const f=toForm(c);return Object.keys(validate(f).errors).length?clone(CFG_DEF):fromForm(f);
+ }catch(_){return clone(CFG_DEF)}});
+ const save=useCallback(c=>{set(c);try{localStorage.setItem(CK,JSON.stringify(c));return true}catch(_){return false}},[]);
+ const v=useMemo(()=>({cfg,save,reset:()=>save(clone(CFG_DEF))}),[cfg,save]);
+ return h(CfgCtx.Provider,{value:v},children);
+}
 const enc=new TextEncoder(),dec=new TextDecoder(),wait=ms=>new Promise(r=>setTimeout(r,ms));
 class MicroLink{
  static get supported(){return 'bluetooth' in navigator}
- constructor(cb){Object.assign(this,cb);this.pending=new Map();this.busy=false;this.seq=0}
+ constructor(cb){Object.assign(this,cb);this.pending=new Map();this.busy=false;this.seq=0;this.opts={delay:25,mode:'auto',chunk:20}}
  async connect(){
   this.device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'BBC micro:bit'},{services:[UART]}],optionalServices:[UART,'battery_service']});
-  this.device.addEventListener('gattserverdisconnected',()=>{this.pending.clear();this.onDisconnect&&this.onDisconnect()});
+  this.device.addEventListener('gattserverdisconnected',()=>{this.failAll('Disconnected');this.onDisconnect&&this.onDisconnect()});
   const srv=await this.device.gatt.connect(),svc=await srv.getPrimaryService(UART);
   // micro:bit UART characteristics are the reverse of Nordic's naming, so pick them by what they can do.
   const chars=await svc.getCharacteristics();
@@ -82,15 +163,28 @@ class MicroLink{
   try{const b=await srv.getPrimaryService('battery_service');battery=(await(await b.getCharacteristic('battery_level')).readValue()).getUint8(0)}catch(_){}
   return{name:this.device.name||'micro:bit',battery};
  }
- disconnect(){this.pending.clear();if(this.device&&this.device.gatt.connected)this.device.gatt.disconnect()}
- send(t,key){this.pending.set(key==null?'_'+this.seq++:key,t);this.flush()}
+ disconnect(){this.failAll('Disconnected');if(this.device&&this.device.gatt.connected)this.device.gatt.disconnect()}
+ failAll(msg){const p=[...this.pending.values()];this.pending.clear();p.forEach(v=>v.done&&v.done(msg))}
+ send(t,key,done){this.pending.set(key==null?'_'+this.seq++:key,{t,done});this.flush()}
+ async write(text){
+  const rx=this.rx,o=this.opts,d=enc.encode(text),n=Math.max(1,o.chunk|0);
+  const canNo=!!(rx.properties.writeWithoutResponse&&rx.writeValueWithoutResponse),canYes=!!rx.properties.write;
+  const noResp=o.mode==='withResponse'?!canYes:canNo; // "auto" = original behaviour; a forced mode falls back if unsupported
+  for(let i=0;i<d.length;i+=n){
+   if(i)await wait(o.delay);
+   const p=d.slice(i,i+n);
+   await(noResp?rx.writeValueWithoutResponse(p):rx.writeValueWithResponse?rx.writeValueWithResponse(p):rx.writeValue(p));
+  }
+ }
  async flush(){
   if(this.busy)return;this.busy=true;
   while(this.pending.size){
    const [k,v]=this.pending.entries().next().value;this.pending.delete(k);
-   if(!this.device.gatt.connected){this.pending.clear();break}
-   try{const d=enc.encode(v);this.rx.properties.writeWithoutResponse&&this.rx.writeValueWithoutResponse?await this.rx.writeValueWithoutResponse(d):await this.rx.writeValue(d)}catch(e){this.onError&&this.onError(e.message)}
-   await wait(25);
+   if(!this.device||!this.rx||!this.device.gatt.connected){v.done&&v.done('Not connected');this.failAll('Not connected');break}
+   let err=null;
+   try{await this.write(v.t)}catch(e){err=e.message||String(e);this.onError&&this.onError(err)}
+   v.done&&v.done(err);
+   await wait(this.opts.delay);
   }
   this.busy=false;
  }
@@ -107,8 +201,7 @@ function PrefsProvider({children}){
  return h(PrefsCtx.Provider,{value:v},children);
 }
 function MicroProvider({children}){
- const {prefs}=usePrefs();
- const nl=useRef(prefs.newline);nl.current=prefs.newline;
+ const {cfg}=useCfg(),cr=useRef(cfg);cr.current=cfg; // always read the latest saved settings
  const link=useRef(null),lid=useRef(0);
  const [status,setStatus]=useState('disconnected'),[name,setName]=useState(null),[battery,setBattery]=useState(null),[error,setError]=useState(null),[sent,setSent]=useState(0),[log,setLog]=useState([]);
  const push=useCallback((type,text)=>setLog(l=>[{id:++lid.current,time:new Date(),type,text},...l].slice(0,60)),[]);
@@ -129,13 +222,30 @@ function MicroProvider({children}){
  },[push]);
  const disconnect=useCallback(()=>link.current&&link.current.disconnect(),[]);
  const send=useCallback((cmd,o={})=>{
-  if(!link.current)return false;
-  link.current.send(cmd+(nl.current?'\n':''),o.key);setSent(n=>n+1);
-  if(o.log!==false)push('tx',cmd);return true;
+  const l=link.current;if(!l)return false;
+  const tx=cr.current.tx;
+  try{l.opts=linkOpts(tx);l.send(fmtPayload(cmd,tx,o.raw),o.key,o.done)}catch(e){push('error','Send failed: '+e.message);return false}
+  setSent(n=>n+1);
+  if(o.log!==false&&tx.log)push('tx',cmd);return true;
  },[push]);
+ useEffect(()=>{if(link.current)link.current.opts=linkOpts(cfg.tx)},[cfg.tx]);
  useEffect(()=>()=>link.current&&link.current.disconnect(),[]);
- const v=useMemo(()=>({status,name,battery,error,sent,log,connect,disconnect,send,supported:MicroLink.supported,connected:status==='connected'}),[status,name,battery,error,sent,log,connect,disconnect,send]);
+ const v=useMemo(()=>({status,name,battery,error,sent,log,push,connect,disconnect,send,supported:MicroLink.supported,connected:status==='connected'}),[status,name,battery,error,sent,log,push,connect,disconnect,send]);
  return h(MicroCtx.Provider,{value:v},children);
+}
+
+/* ---------- error boundary: a crash shows its message instead of a blank page ---------- */
+class Boundary extends React.Component{
+ constructor(p){super(p);this.state={e:null}}
+ static getDerivedStateFromError(e){return{e}}
+ componentDidCatch(e){console.error('LOFI UI error:',e)}
+ render(){
+  const e=this.state.e;
+  return e?h('div',{role:'alert',className:'rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200'},
+   h('p',{className:'font-semibold'},'Something went wrong in this section.'),
+   h('p',{className:'mt-1 break-words font-mono text-xs'},String((e&&e.message)||e)),
+   h('button',{className:'btn btn-g mt-3',onClick:()=>this.setState({e:null})},'Try again')):this.props.children;
+ }
 }
 
 /* ---------- shared UI ---------- */
@@ -226,15 +336,17 @@ function DashboardPage({navigate}){
 
 const KEYS={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
 function ControllerPage(){
- const {status,connected,send,connect}=useMicro(),{prefs,setPref}=usePrefs();
- const [dir,setDirS]=useState('stop'),[sl,setSl]=useState({c:90,x:90});
+ const {status,connected,send,connect}=useMicro(),{prefs,setPref}=usePrefs(),{cfg}=useCfg(),{move,servo:sv}=cfg;
+ const [dir,setDirS]=useState('stop'),[sl,setSl]=useState({s1:sv.def,s2:sv.def});
  const lastDir=useRef('stop'),lastSl=useRef({});
- // Protocol: up/down/left/right/horn/stop · slider 1 = c0..c180 · slider 2 = x0..x180
- const setDir=useCallback(d=>{if(lastDir.current===d)return;lastDir.current=d;setDirS(d);send(d,{key:'dir'})},[send]);
- const setSlider=useCallback((ch,v)=>{if(lastSl.current[ch]===v)return;lastSl.current[ch]=v;setSl(s=>({...s,[ch]:v}));send(ch+v,{key:ch,log:false})},[send]);
+ // Every command comes from Micro Data Settings (cfg); nothing is hardcoded here.
+ const setDir=useCallback(d=>{if(lastDir.current===d)return;lastDir.current=d;setDirS(d);send(move[d],{key:'dir'})},[send,move]);
+ const setSlider=useCallback((n,v)=>{const i=n==='s1'?1:2;v=clamp(v,sv['min'+i],sv['max'+i]);if(lastSl.current[n]===v)return;lastSl.current[n]=v;setSl(s=>({...s,[n]:v}));send(sv['p'+i]+v,{key:n,log:false})},[send,sv]);
+ useEffect(()=>{setSl(s=>({s1:clamp(s.s1,sv.min1,sv.max1),s2:clamp(s.s2,sv.min2,sv.max2)}));lastSl.current={}},[sv]);
  useEffect(()=>{lastDir.current='stop';lastSl.current={};setDirS('stop')},[connected]);
  const onLeft=({x,y})=>Math.hypot(x,y)<.35?setDir('stop'):setDir(Math.abs(x)>Math.abs(y)?(x>0?'right':'left'):(y>0?'up':'down'));
- const onRight=({x,y})=>{const k=prefs.speed/100;setSlider('c',Math.round(90+x*90*k));setSlider('x',Math.round(90+y*90*k))};
+ const axis=(x,i,k)=>{const lo=sv['min'+i],hi=sv['max'+i],d=sv.def;return Math.round(clamp(x>=0?d+x*(hi-d)*k:d+x*(d-lo)*k,lo,hi))}; // stick centre = default servo position
+ const onRight=({x,y})=>{const k=prefs.speed/100;setSlider('s1',axis(x,1,k));setSlider('s2',axis(y,2,k))};
  useEffect(()=>{
   if(!connected||!prefs.keyboard)return;
   const typing=e=>e.target.tagName==='INPUT'&&e.target.type!=='range';
@@ -251,24 +363,190 @@ function ControllerPage(){
   off&&h('div',{className:'glass flex flex-wrap items-center justify-between gap-3 p-4 text-sm'},h('p',{className:'text-slate-300'},'Controls are locked until a Micro is connected over Bluetooth.'),
    h('button',{className:'btn btn-p',onClick:connect,disabled:status==='connecting'},h(Icon,{n:'bt',s:16}),'Connect Micro')),
   h('div',{className:'grid gap-4 lg:grid-cols-3'},
-   h(Card,{title:'Movement',className:'flex flex-col items-center'},h(Joystick,{label:'Left',onChange:onLeft,disabled:off}),h('p',{className:'mt-3 text-xs text-slate-400'},'Sends ',h('span',{className:'font-mono text-neon'},dir))),
+   h(Card,{title:'Movement',className:'flex flex-col items-center'},h(Joystick,{label:'Left',onChange:onLeft,disabled:off}),h('p',{className:'mt-3 text-xs text-slate-400'},'Sends ',h('span',{className:'font-mono text-neon'},move[dir]))),
    h(Card,{title:'Directional pad',className:'flex flex-col items-center justify-between gap-6'},
-    h(DPad,{dir,onDir:setDir,onHorn:d=>send(d?'horn':'stop',{key:'horn'}),onStop:()=>setDir('stop'),disabled:off}),
+    h(DPad,{dir,onDir:setDir,onHorn:d=>send(d?move.horn:move.stop,{key:'horn'}),onStop:()=>setDir('stop'),disabled:off}),
     h('button',{className:'btn btn-d w-full',disabled:off,onClick:()=>{lastDir.current='';setDir('stop')}},h(Icon,{n:'stop',s:14}),'Stop')),
    h(Card,{title:'Actions',className:'flex flex-col items-center'},h(Joystick,{label:'Right',accent:'violet',onChange:onRight,disabled:off}),
-    h('p',{className:'mt-3 text-xs text-slate-400'},'X → c'+sl.c+' · Y → x'+sl.x))),
+    h('p',{className:'mt-3 text-xs text-slate-400'},'X → '+sv.p1+sl.s1+' · Y → '+sv.p2+sl.s2))),
   h('div',{className:'grid gap-4 md:grid-cols-2'},
-   h(Card,{title:'Sliders (0–180)',className:'space-y-5'},h(Slider,{label:'Slider 1',ch:'c',value:sl.c,onChange:v=>setSlider('c',v),disabled:off}),h(Slider,{label:'Slider 2',ch:'x',value:sl.x,onChange:v=>setSlider('x',v),disabled:off})),
+   h(Card,{title:'Sliders'+(sv.min1===sv.min2&&sv.max1===sv.max2?' ('+sv.min1+'–'+sv.max1+')':''),className:'space-y-5'},
+    h(Slider,{label:'Slider 1',ch:sv.p1,value:sl.s1,min:sv.min1,max:sv.max1,onChange:v=>setSlider('s1',v),disabled:off}),
+    h(Slider,{label:'Slider 2',ch:sv.p2,value:sl.s2,min:sv.min2,max:sv.max2,onChange:v=>setSlider('s2',v),disabled:off}),
+    h('button',{className:'btn btn-g w-full',disabled:off,onClick:()=>{setSlider('s1',sv.def);setSlider('s2',sv.def)}},h(Icon,{n:'rot',s:14}),'Default position ('+sv.def+')')),
    h(Card,{title:'Speed',icon:'act'},h(Slider,{label:'Right stick range',ch:'',value:prefs.speed,min:10,max:100,onChange:v=>setPref('speed',v)}),
-    h('p',{className:'mt-3 text-xs text-slate-500'},'Limits how far the right stick moves the sliders from 90. Saved on this device.'))));
+    h('p',{className:'mt-3 text-xs text-slate-500'},'Limits how far the right stick moves the sliders from 90. Saved on this device.'))),
+  h(Boundary,null,h(TransporterControl)));
 }
 
-function SettingsPage(){
+/* ---------- Transporter Control (cargo compartment / gripper servo) ---------- */
+const MECH={
+ open:{dot:'bg-emerald-400',glow:'0 0 14px rgba(52,211,153,.8)',text:'text-emerald-300',label:'OPEN'},
+ closed:{dot:'bg-rose-400',glow:'0 0 14px rgba(251,113,133,.8)',text:'text-rose-300',label:'CLOSED'},
+ moving:{dot:'bg-amber-400 animate-pulse',glow:'0 0 14px rgba(251,191,36,.8)',text:'text-amber-300',label:'MOVING'},
+ unknown:{dot:'bg-slate-500',glow:'none',text:'text-slate-400',label:'UNKNOWN'}
+};
+function TransporterControl(){
+ const {connected,send,push,log}=useMicro(),{cfg}=useCfg(),T=cfg.trans,logOn=cfg.tx.log;
+ const [state,setState]=useState('unknown'),[confirmed,setConfirmed]=useState(false);
+ const busy=useRef(false),timer=useRef(null),target=useRef('unknown'),seen=useRef(log.length?log[0].id:0);
+ const settle=useCallback(()=>{clearTimeout(timer.current);timer.current=null;busy.current=false},[]);
+ const command=useCallback(which=>{
+  if(!connected||busy.current)return;               // locked while a command is processing
+  const cmd=T[which];
+  if(!send(cmd))return;
+  busy.current=true;target.current=which==='open'?'open':'closed';
+  setState('moving');setConfirmed(false);
+  logOn&&push('event','Transporter: '+which.toUpperCase()+' commanded (sent "'+cmd+'")');
+  timer.current=setTimeout(()=>{timer.current=null;busy.current=false;setState(target.current)},T.travelMs);
+ },[connected,send,push,T,logOn]);
+ const stop=useCallback(()=>{
+  if(!connected||!T.stop)return;
+  if(!send(T.stop))return;
+  settle();setState('unknown');setConfirmed(false);
+  logOn&&push('event','Transporter: STOP commanded (sent "'+T.stop+'") · position now unknown');
+ },[connected,send,push,settle,T,logOn]);
+ // disconnect → reset and unlock
+ useEffect(()=>{if(!connected){settle();setState('unknown');setConfirmed(false)}},[connected,settle]);
+ useEffect(()=>()=>{clearTimeout(timer.current)},[]);
+ // optional hardware feedback from the micro confirms the real state
+ const last=log[0];
+ useEffect(()=>{
+  if(!connected||!last||last.id<=seen.current)return;
+  seen.current=last.id;if(last.type!=='rx')return;
+  const t=last.text.trim().toLowerCase();
+  const s=T.fbOpen.includes(t)?'open':T.fbClosed.includes(t)?'closed':null;
+  if(s){settle();setState(s);setConfirmed(true);push('event','Transporter: micro confirmed '+s.toUpperCase())}
+ },[last&&last.id]);
+ const M=MECH[state],moving=state==='moving',off=!connected,lock=off||moving;
+ const note=state==='unknown'?'No state known yet. Press OPEN or CLOSE.':moving?'Command sent · waiting for mechanism…':confirmed?'Confirmed by the micro’s feedback.':'Commanded state — not confirmed by physical feedback.';
+ const big=(which,icon,cls,on)=>h('button',{className:'tp-btn nt '+cls+(on?' tp-on':''),disabled:lock,onClick:()=>command(which),'aria-label':which==='open'?'Open cargo compartment':'Close cargo compartment'},
+  h(Icon,{n:icon,s:44}),h('span',{className:'text-xl'},which.toUpperCase()),
+  h('span',{className:'font-mono text-[11px] font-normal tracking-normal opacity-70'},'sends “'+T[which]+'”'));
+ return h(Card,{title:'Transporter Control',icon:'expand'},
+  h('div',{className:'grid gap-5 lg:grid-cols-3'},
+   h('div',{className:'lg:col-span-2 space-y-4'},
+    h('div',{className:'grid grid-cols-2 gap-4'},
+     big('open','expand','tp-open',state==='open'),big('close','shrink','tp-close',state==='closed')),
+    h('button',{className:'btn btn-d w-full',disabled:off||!T.stop,onClick:stop,title:T.stop?'':'No stop command configured'},h(Icon,{n:'stop',s:14}),'STOP MECHANISM'),
+    h('p',{className:'text-xs text-slate-500'},off?'Locked until a Micro is connected.':!T.stop?'STOP is disabled: no stop command is configured.':'STOP works only if your firmware handles “'+T.stop+'”.')),
+   h('div',{className:'flex flex-col justify-center rounded-xl border border-white/10 bg-white/5 p-5','aria-live':'polite'},
+    h('p',{className:'text-xs uppercase tracking-wider text-slate-400'},'Mechanism status'),
+    h('div',{className:'mt-3 flex items-center gap-3'},h('span',{className:'tp-dot '+M.dot,style:{boxShadow:M.glow}}),h('span',{className:'text-2xl font-bold '+M.text},M.label)),
+    h('p',{className:'mt-3 text-xs text-slate-400'},note),
+    h('p',{className:'mt-4 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500'},
+     ['Open','Closed','Moving','Unknown'].map((l,i)=>h('span',{key:l,className:'inline-flex items-center gap-1.5'},h('span',{className:'h-2 w-2 rounded-full '+['bg-emerald-400','bg-rose-400','bg-amber-400','bg-slate-500'][i]}),l))))));
+}
+
+/* ---------- Micro Data Settings page ---------- */
+const Field=({id,label,hint,error,children})=>h('div',null,h('label',{htmlFor:id,className:'mb-1.5 block text-xs font-medium text-slate-300'},label),children,
+ error?h('p',{role:'alert',className:'mt-1 text-xs text-rose-300'},error):hint?h('p',{className:'mt-1 text-xs text-slate-500'},hint):null);
+const Inp=({id,value,onChange,error,...r})=>h('input',{id,value,onChange:e=>onChange(e.target.value),className:'inp'+(error?' bad':''),'aria-invalid':!!error,autoComplete:'off',autoCapitalize:'off',autoCorrect:'off',spellCheck:false,...r});
+const Seg=({label,value,options,onChange})=>h('div',{role:'radiogroup','aria-label':label,className:'grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-white/5 p-1'},
+ options.map(([v,l])=>h('button',{key:v,role:'radio','aria-checked':value===v,onClick:()=>onChange(v),className:'rounded-lg px-2 py-2 text-xs font-medium transition '+(value===v?'bg-electric/30 text-white ring-1 ring-neon/40':'text-slate-400 hover:text-white')},l)));
+const Pill=({s})=>{const [c,l]={sending:['border-amber-400/30 text-amber-300','Sending…'],ok:['border-emerald-400/30 text-emerald-300','Sent'],fail:['border-rose-400/30 text-rose-300','Failed']}[s];return h('span',{className:'rounded-full border bg-white/5 px-2.5 py-0.5 text-xs font-medium '+c},l)};
+const PartsView=({parts})=>h('code',{className:'break-all font-mono text-sm'},parts.map((p,i)=>h('span',{key:i,className:{cmd:'text-cyan-200',delim:'text-amber-300',nl:'text-violet-300'}[p.k]},p.show)));
+const NI={inputMode:'numeric'};
+
+function LivePreview({f,E,warnings,dirty}){
+ const s=f.servo,t=f.trans,g=E['tx.delim'],tx={newline:f.tx.newline,delim:g?'':f.tx.delim};
+ const R=(grp,label,cmd,err)=>({grp,label,cmd,err:err||g});
+ const rows=[...Object.keys(NAMES).map(k=>R('Movement',NAMES[k]+(k==='horn'?' (held)':''),f.move[k],E['move.'+k])),
+  R('Servo','Slider 1 at '+num(s.def),s.p1+num(s.def),E['servo.p1']||E['servo.def']),R('Servo','Slider 1 at '+num(s.max1),s.p1+num(s.max1),E['servo.p1']||E['servo.max1']),
+  R('Servo','Slider 2 at '+num(s.def),s.p2+num(s.def),E['servo.p2']||E['servo.def']),R('Servo','Slider 2 at '+num(s.max2),s.p2+num(s.max2),E['servo.p2']||E['servo.max2']),
+  R('Transporter','Open',t.open,E['trans.open']),R('Transporter','Close',t.close,E['trans.close']),R('Transporter','Stop mechanism',t.stop,E['trans.stop'])];
+ return h(Card,{title:'Live Data Preview',icon:'term'},
+  h('p',{className:'mb-3 text-xs '+(dirty?'text-amber-300':'text-slate-400')},dirty?'Previewing unsaved changes. The controller keeps using the saved commands until you save.':'Matches what the controller sends right now.'),
+  warnings.map(w=>h('p',{key:w,className:'mb-2 flex gap-2 text-xs text-amber-300'},h(Icon,{n:'warn',s:14,c:'mt-0.5 shrink-0'}),w)),
+  h('div',{className:'overflow-x-auto'},h('table',{className:'w-full min-w-[420px] text-left text-sm'},
+   h('thead',null,h('tr',{className:'text-xs text-slate-400'},['Action','Transmitted data','Bytes'].map(c=>h('th',{key:c,className:'border-b border-white/10 px-3 py-2 font-medium'},c)))),
+   ['Movement','Servo','Transporter'].map(gr=>h('tbody',{key:gr},h('tr',null,h('th',{colSpan:3,className:'px-3 pb-1 pt-4 text-xs font-semibold text-neon'},gr)),
+    rows.filter(r=>r.grp===gr).map(r=>{const ok=!r.err&&r.cmd;
+     return h('tr',{key:rows.indexOf(r),className:'border-b border-white/5'},h('td',{className:'px-3 py-2 text-slate-200'},r.label),
+      h('td',{className:'px-3 py-2'},r.err?h('span',{className:'text-xs text-rose-300'},'Invalid'):r.cmd?h(PartsView,{parts:fmtParts(r.cmd,tx)}):h('span',{className:'text-xs text-slate-500'},'Not sent (disabled)')),
+      h('td',{className:'px-3 py-2 font-mono text-xs text-slate-400'},ok?enc.encode(fmtPayload(r.cmd,tx)).length:'–'))}))))),
+  h('p',{className:'mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400'},h('span',{className:'text-cyan-200'},'command'),h('span',{className:'text-amber-300'},'delimiter'),h('span',{className:'text-violet-300'},'newline'),h('span',null,(num(f.tx.chunk)||20)+' bytes per packet, '+num(f.tx.delay)+' ms between packets')));
+}
+
+function CommandTester({dirtyTx}){
+ const {connected,send,log}=useMicro(),{cfg}=useCfg(),tx=cfg.tx; // the tester sends through the same send() and saved settings as the controller
+ const [text,setText]=useState(''),[fmt,setFmt]=useState(true),[hist,setHist]=useState([]),[base,setBase]=useState(0),idc=useRef(0),lr=useRef(log);lr.current=log;
+ const err=!text?null:!ASCII.test(text)?'Use printable characters only':text.length>100?'Use 100 characters or fewer':null;
+ const go=()=>{
+  if(!connected||!text||err)return;
+  const id=++idc.current,payload=fmtPayload(text,tx,!fmt),bytes=enc.encode(payload).length,up=p=>setHist(a=>a.map(x=>x.id===id?{...x,...p}:x));
+  setBase(lr.current.length?lr.current[0].id:0);
+  setHist(a=>[{id,parts:fmtParts(text,tx,!fmt),bytes,packets:Math.ceil(bytes/tx.chunk),status:'sending',time:new Date()},...a].slice(0,5));
+  if(!send(text,{raw:!fmt,done:e=>up({status:e?'fail':'ok',err:e})}))up({status:'fail',err:'Not connected'});
+ };
+ const rx=log.filter(e=>e.type==='rx').slice(0,8);
+ return h(Card,{title:'Command Tester',icon:'send'},h('div',{className:'grid gap-6 lg:grid-cols-2'},
+  h('div',{className:'space-y-4'},
+   h(Field,{id:'tt-in',label:'Custom command',error:err,hint:'Press Enter to send.'},h(Inp,{id:'tt-in',value:text,onChange:setText,error:err,placeholder:'e.g. up',maxLength:100,onKeyDown:e=>e.key==='Enter'&&go()})),
+   h(Toggle,{label:'Add delimiter and newline',desc:'Use the saved transmission format. Turn off to send the text exactly as typed.',checked:fmt,onChange:setFmt}),
+   h('div',{className:'rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-400'},'Will send ',text?h(PartsView,{parts:fmtParts(text,tx,!fmt)}):'nothing yet'),
+   h('div',{className:'flex flex-wrap items-center gap-3'},h('button',{className:'btn btn-p',disabled:!connected||!text||!!err,onClick:go},h(Icon,{n:'send',s:16}),'Send Test Command'),!connected&&h('span',{className:'text-xs text-slate-500'},'Connect a Micro to send.')),
+   dirtyTx&&h('p',{className:'text-xs text-amber-300'},'You have unsaved transmission changes. The tester uses the saved ones.'),
+   hist.length>0&&h('ul',{className:'space-y-2','aria-live':'polite'},hist.map(x=>h('li',{key:x.id,className:'flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2'},
+    h('span',null,h(PartsView,{parts:x.parts}),h('span',{className:'ml-2 text-xs text-slate-500'},x.bytes+' B · '+x.packets+(x.packets>1?' packets':' packet')+' · '+x.time.toLocaleTimeString([],{hour12:false}))),
+    h(Pill,{s:x.status}),x.err&&h('p',{className:'w-full text-xs text-rose-300'},x.err))))),
+  h('div',null,h('p',{className:'mb-2 text-xs font-medium text-slate-300'},'Incoming Bluetooth responses'),
+   rx.length?h('ul',{className:'space-y-1 font-mono text-xs'},rx.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 '+(hist.length&&e.id>base?'bg-violet/10':'')},
+     h('time',{className:'shrink-0 text-slate-500'},e.time.toLocaleTimeString([],{hour12:false})),h('span',{className:'break-words text-violet-300'},e.text))))
+   :h('p',{className:'text-sm text-slate-500'},'No responses yet. Replies appear here when your micro writes to its UART.'))));
+}
+
+function MicroDataPage(){
+ const m=useMicro(),{cfg,save,reset}=useCfg();
+ const [f,setF]=useState(()=>toForm(cfg)),[msg,setMsg]=useState(''),[arm,setArm]=useState(false),tm=useRef(0);
+ const saved=useMemo(()=>toForm(cfg),[cfg]),dirty=JSON.stringify(f)!==JSON.stringify(saved),dirtyTx=JSON.stringify(f.tx)!==JSON.stringify(saved.tx);
+ const {errors:E,warnings}=useMemo(()=>validate(f),[f]),nErr=Object.keys(E).length;
+ const set=(s,k,v)=>{setF(p=>({...p,[s]:{...p[s],[k]:v}}));setMsg('')};
+ const fld=(s,k,label,hint,o={})=>h(Field,{key:k,id:s+'-'+k,label,hint,error:E[s+'.'+k]},h(Inp,{id:s+'-'+k,value:f[s][k],error:E[s+'.'+k],onChange:v=>set(s,k,v),...o}));
+ const doSave=()=>{if(nErr||!dirty)return;const c=fromForm(f),ok=save(c);setF(toForm(c));setMsg(ok?'Saved. The controller now sends these commands.':'Applied, but this browser blocked saving, so it will not survive a refresh.')};
+ const doReset=()=>{
+  if(!arm){setArm(true);clearTimeout(tm.current);tm.current=setTimeout(()=>setArm(false),4000);return}
+  clearTimeout(tm.current);setArm(false);const ok=reset();setF(toForm(CFG_DEF));setMsg(ok?'Defaults restored and saved.':'Defaults restored for this session.');
+ };
+ useEffect(()=>()=>clearTimeout(tm.current),[]);
+ const sv=f.servo;
+ return h('div',{className:'space-y-6'},
+  h(Head,{title:'Micro Data Settings',sub:'Choose exactly what the controller sends to your micro:bit over Bluetooth UART.'},h('div',{className:'flex flex-wrap items-center gap-3'},h(Badge,{status:m.status}),h(ConnectionControls))),
+  h(ErrorBanner),
+  h('div',{className:'grid gap-4 lg:grid-cols-2'},
+   h(Card,{title:'Movement Configuration',icon:'pad'},h('div',{className:'grid grid-cols-2 gap-4'},Object.keys(NAMES).map(k=>fld('move',k,NAMES[k],'Default “'+CFG_DEF.move[k]+'”')))),
+   h(Card,{title:'Servo Configuration',icon:'cog'},h('div',{className:'grid grid-cols-2 gap-4'},
+    fld('servo','p1','Slider 1 prefix','Sends “'+sv.p1+sv.def+'”'),fld('servo','p2','Slider 2 prefix','Sends “'+sv.p2+sv.def+'”'),
+    fld('servo','min1','Slider 1 minimum',null,NI),fld('servo','max1','Slider 1 maximum',null,NI),
+    fld('servo','min2','Slider 2 minimum',null,NI),fld('servo','max2','Slider 2 maximum',null,NI),
+    fld('servo','def','Default servo position','Start value and stick centre',NI))),
+   h(Card,{title:'Transporter Configuration',icon:'expand'},
+    h('div',{className:'grid grid-cols-2 gap-4'},fld('trans','open','Open'),fld('trans','close','Close'),fld('trans','stop','Stop mechanism','Leave empty to disable STOP')),
+    h('p',{className:'mb-3 mt-5 text-xs font-medium text-slate-300'},'Status feedback (optional)'),
+    h('div',{className:'grid grid-cols-2 gap-4'},fld('trans','travelMs','Travel time (ms)','Shown as MOVING',NI),fld('trans','fbOpen','Replies meaning open','Comma separated'),fld('trans','fbClosed','Replies meaning closed','Comma separated'))),
+   h(Card,{title:'Transmission Settings',icon:'send'},
+    h(Toggle,{label:'Append newline (\\n)',desc:'Ends every message with a line break. Most MakeCode UART programs wait for it.',checked:f.tx.newline,onChange:v=>set('tx','newline',v)}),
+    h('div',{className:'grid grid-cols-2 gap-4'},fld('tx','delim','Command delimiter','Placed after the command, before the newline'),fld('tx','delay','Transmission delay (ms)','Pause between packets',NI)),
+    h(Toggle,{label:'Command logging',desc:'Show sent commands in Live activity. Slider values are never logged; micro replies always are.',checked:f.tx.log,onChange:v=>set('tx','log',v)}),
+    h('p',{className:'mb-2 mt-2 text-xs font-medium text-slate-300'},'Bluetooth UART write mode'),
+    h(Seg,{label:'Write mode',value:f.tx.mode,onChange:v=>set('tx','mode',v),options:[['auto','Auto'],['withResponse','With response'],['withoutResponse','No response']]}),
+    h('div',{className:'mt-4'},fld('tx','chunk','Bytes per packet','Longer messages are split. 20 suits every micro:bit',NI)))),
+  h(LivePreview,{f,E,warnings,dirty}),
+  h(Boundary,null,h(CommandTester,{dirtyTx})),
+  h('div',{className:'actionbar glass flex flex-wrap items-center justify-between gap-3 p-3'},
+   h('p',{'aria-live':'polite',className:'flex items-center gap-2 px-1 text-sm '+(nErr?'text-rose-300':dirty?'text-amber-300':'text-emerald-300')},h(Icon,{n:nErr?'warn':dirty?'info':'check',s:16}),nErr?'Fix '+nErr+(nErr>1?' fields':' field')+' to save':dirty?'Unsaved changes':msg||'All changes saved'),
+   h('div',{className:'flex gap-2'},
+    h('button',{className:'btn '+(arm?'btn-d':'btn-g'),onClick:doReset},h(Icon,{n:'rot',s:16}),arm?'Confirm reset':'Reset to Default'),
+    h('button',{className:'btn btn-p',disabled:!dirty||!!nErr,onClick:doSave},h(Icon,{n:'save',s:16}),'Save Changes'))));
+}
+
+function SettingsPage({navigate}){
  const {prefs,setPref,reset}=usePrefs();
  return h('div',{className:'space-y-6'},h(Head,{title:'Settings',sub:'Preferences are saved in this browser.'}),
   h(Card,{title:'Controller',className:'max-w-2xl'},
    h(Toggle,{label:'Keyboard arrows',desc:'Drive with the arrow keys while connected.',checked:prefs.keyboard,onChange:v=>setPref('keyboard',v)}),
-   h(Toggle,{label:'Append newline to commands',desc:'Most MakeCode UART programs expect a newline. Turn off if yours does not.',checked:prefs.newline,onChange:v=>setPref('newline',v)}),
+   h('div',{className:'flex flex-wrap items-center justify-between gap-3 py-3'},h('div',null,h('p',{className:'text-sm font-medium text-slate-100'},'Command format'),h('p',{className:'text-xs text-slate-400'},'Newline, delimiter and every command are set in Micro Data Settings.')),
+    h('button',{className:'btn btn-g',onClick:()=>navigate('data')},h(Icon,{n:'term',s:16}),'Open Micro Data Settings')),
    h('div',{className:'pt-3'},h('button',{className:'btn btn-g',onClick:reset},h(Icon,{n:'rot',s:16}),'Reset preferences'))));
 }
 
@@ -276,6 +554,7 @@ function SettingsPage(){
 const TABS=[
  {id:'dashboard',label:'Dashboard',icon:'dash',component:DashboardPage},
  {id:'controller',label:'Micro Controller',icon:'pad',component:ControllerPage},
+ {id:'data',label:'Micro Data',icon:'term',component:MicroDataPage},
  {id:'settings',label:'Settings',icon:'cog',component:SettingsPage}
 ];
 
@@ -300,9 +579,9 @@ function App(){
  const [active,setActive]=useState(TABS[0].id); // Dashboard is the default
  const Page=(TABS.find(t=>t.id===active)||TABS[0]).component;
  return h('div',{className:'min-h-screen'},h(Sidebar,{active,onSelect:setActive}),
-  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{key:active,className:'page mx-auto max-w-6xl p-4 sm:p-6 lg:p-8'},h(Page,{navigate:setActive}))));
+  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{key:active,className:'page mx-auto max-w-6xl p-4 sm:p-6 lg:p-8'},h(Boundary,{key:active},h(Page,{navigate:setActive})))));
 }
-ReactDOM.createRoot(document.getElementById('root')).render(h(PrefsProvider,null,h(MicroProvider,null,h(App))));
+ReactDOM.createRoot(document.getElementById('root')).render(h(PrefsProvider,null,h(CfgProvider,null,h(MicroProvider,null,h(App)))));
 })();
 </script>
 </body>
