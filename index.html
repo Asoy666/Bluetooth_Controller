@@ -19,6 +19,7 @@ background-image:radial-gradient(900px 500px at 85% -10%,rgba(139,92,246,.16),tr
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.75rem;padding:.6rem 1rem;font-size:.875rem;font-weight:600;transition:all .2s;border:1px solid transparent;cursor:pointer}
 .btn:disabled{opacity:.4;cursor:not-allowed}.btn:active:not(:disabled){transform:scale(.97)}
 .btn-p{background:linear-gradient(90deg,#3b82f6,#22d3ee);color:#060914}.btn-p:hover:not(:disabled){filter:brightness(1.1)}
+.btn-e{background:linear-gradient(90deg,#e11d48,#f43f5e);color:#fff;box-shadow:0 0 24px rgba(244,63,94,.35)}.btn-e:hover:not(:disabled){filter:brightness(1.1)}
 .btn-g{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);color:#e2e8f0}.btn-g:hover:not(:disabled){background:rgba(255,255,255,.1)}
 .btn-d{background:rgba(244,63,94,.15);border-color:rgba(251,113,133,.3);color:#fecdd3}
 .nt{touch-action:none;user-select:none;-webkit-user-select:none}
@@ -76,7 +77,11 @@ const P={
  expand:'M15 3h6v6|M9 21H3v-6|M21 3l-7 7|M3 21l7-7',
  shrink:'M4 14h6v6|M20 10h-6V4|M14 10l7-7|M3 21l7-7',
  term:'m4 17 6-6-6-6|M12 19h8',check:'M20 6 9 17l-5-5',
- save:'M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7|M7 3v4a1 1 0 0 0 1 1h7'
+ save:'M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7|M7 3v4a1 1 0 0 0 1 1h7',
+ cam:'M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z|M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8',
+ play:'M6 3l14 9-14 9z',
+ trash:'M3 6h18|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6|M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
+ brain:'M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z|M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z|M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4|M17.599 6.5a3 3 0 0 0 .399-1.375|M6.003 5.125A3 3 0 0 0 6.401 6.5|M3.477 10.896a4 4 0 0 1 .585-.396|M19.938 10.5a4 4 0 0 1 .585.396|M6 18a4 4 0 0 1-1.967-.516|M19.967 17.484A4 4 0 0 1 18 18'
 };
 const Icon=({n,s=18,c=''})=>h('svg',{width:s,height:s,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',className:c,'aria-hidden':true},...P[n].split('|').map(d=>h('path',{key:d,d})));
 
@@ -552,11 +557,346 @@ function SettingsPage({navigate}){
    h('div',{className:'pt-3'},h('button',{className:'btn btn-g',onClick:reset},h(Icon,{n:'rot',s:16}),'Reset preferences'))));
 }
 
+/* ---------- AI Vision: Teachable Machine image model -> micro:bit commands ---------- */
+// Libraries are pinned and loaded on demand (first "Load Model"), so the rest of the app starts exactly as before.
+const AI_LIBS=['https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js','https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js'];
+const aiScripts={},aiFail=m=>Object.assign(new Error(m),{friendly:true});
+const aiScript=src=>aiScripts[src]||(aiScripts[src]=new Promise((res,rej)=>{
+ const s=document.createElement('script');s.src=src;s.async=false;s.onload=()=>res();
+ s.onerror=()=>{delete aiScripts[src];s.remove();rej(aiFail('Could not download the AI libraries. Check your internet connection and try again.'))};
+ document.head.appendChild(s);
+}));
+const aiLibs=async()=>{
+ await aiScript(AI_LIBS[0]);await aiScript(AI_LIBS[1]); // tfjs first: the Teachable Machine library needs the global tf
+ if(!window.tf||!window.tmImage)throw aiFail('The AI libraries loaded but are not available. Reload the page and try again.');
+ return window.tmImage;
+};
+const aiDispose=md=>{try{md&&typeof md.dispose==='function'&&md.dispose()}catch(_){}};
+const aiNorm=raw=>{
+ let u=String(raw||'').trim().replace(/[?#].*$/,'');
+ if(!u)return{err:'Paste your Teachable Machine model URL first.'};
+ if(!/^https:\/\//i.test(u)&&!/^http:\/\/(localhost|127\.0\.0\.1)/i.test(u))return{err:'The model URL must start with https://'};
+ if(/\/train\//i.test(u))return{err:'That is the training page. In Teachable Machine choose Export Model → Upload my model, then paste the shared link (…/models/XXXXX/).'};
+ return{url:u.replace(/(model|metadata)\.json$/i,'').replace(/\/*$/,'/')};
+};
+const aiModelErr=e=>e&&e.friendly?e.message:'Could not load the model. Make sure the link is a public Teachable Machine Image model. ('+((e&&e.message)||e)+')';
+const aiCamErr=e=>{const n=e&&e.name;
+ return n==='NotAllowedError'||n==='SecurityError'?'Camera permission was denied. Allow camera access in the browser address bar, then press Start Camera.'
+ :n==='NotFoundError'||n==='DevicesNotFoundError'?'No camera was found on this device.'
+ :n==='NotReadableError'||n==='TrackStartError'?'The camera is being used by another app or browser tab. Close it and try again.'
+ :n==='OverconstrainedError'?'The selected camera is not available. Pick another camera.'
+ :'Could not start the camera: '+((e&&e.message)||e)};
+const AI_KEY='lofi.ai.v1',AI_BG=/^(background|none|nothing|idle|neutral|empty|no[ _-]?(one|thing|object|hand))$/i;
+const AI_DEF={url:'',rec:true,min:80,interval:300,mirror:true,cam:'',auto:true,gap:1000,repeat:2000,dedupe:true,stable:2,stop:'STOP',map:{}};
+const aiLoad=()=>{try{
+ const j=JSON.parse(localStorage.getItem(AI_KEY)||'{}')||{},n=(v,a,b,f)=>v==null||v===''||!Number.isFinite(+v)?f:clamp(Math.round(+v),a,b),map={};
+ if(j.map&&typeof j.map==='object')Object.keys(j.map).forEach(k=>{const e=j.map[k]||{};map[k]={cmd:typeof e.cmd==='string'?e.cmd:k,enabled:e.enabled!==false,min:n(e.min,0,100,null)}});
+ return{url:typeof j.url==='string'?j.url:'',rec:true,min:n(j.min,0,100,AI_DEF.min),interval:n(j.interval,100,2000,AI_DEF.interval),mirror:j.mirror!==false,cam:typeof j.cam==='string'?j.cam:'',
+  auto:j.auto!==false,gap:n(j.gap,0,60000,AI_DEF.gap),repeat:n(j.repeat,0,60000,AI_DEF.repeat),dedupe:j.dedupe!==false,stable:n(j.stable,1,10,AI_DEF.stable),stop:typeof j.stop==='string'&&j.stop?j.stop:AI_DEF.stop,map};
+}catch(_){return{...AI_DEF,map:{}}}};
+// one entry per class: command defaults to the class name; background-like classes start disabled so they never move the robot
+const aiMap=(labels,prev)=>{const map={...prev};labels.forEach(l=>{if(!map[l])map[l]={cmd:l,enabled:!AI_BG.test(l.trim()),min:null}});return map};
+const aiTime=d=>d.toLocaleTimeString([],{hour12:false});
+
+const AiSw=({checked,onChange,label,disabled})=>h('button',{type:'button',role:'switch','aria-checked':checked,'aria-label':label,disabled,onClick:()=>onChange(!checked),className:'relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-40 '+(checked?'bg-electric':'bg-white/15')},
+ h('span',{className:'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all '+(checked?'left-[22px]':'left-0.5')}));
+const AiPill=({tone,label})=>{const [d,t]=TONE[tone];return h('span',{className:'inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium '+t},h('span',{className:'h-2 w-2 rounded-full '+d}),label)};
+const AiBar=({label,pct,top})=>h('div',null,
+ h('div',{className:'mb-1 flex items-baseline justify-between gap-3 text-sm'},h('span',{className:'truncate font-medium '+(top?'text-white':'text-slate-300')},label),h('span',{className:'font-mono text-xs '+(top?'text-neon':'text-slate-400')},pct.toFixed(1)+'%')),
+ h('div',{className:'h-2.5 overflow-hidden rounded-full bg-white/10',role:'progressbar','aria-label':label,'aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':Math.round(pct)},
+  h('div',{className:'h-full rounded-full transition-[width] duration-200 '+(top?'bg-gradient-to-r from-electric to-neon shadow-[0_0_12px_rgba(34,211,238,.6)]':'bg-slate-500/60'),style:{width:clamp(pct,0,100)+'%'}})));
+const AiRange=({id,label,value,min,max,step=1,unit,onChange})=>h('div',null,
+ h('div',{className:'mb-2 flex items-baseline justify-between'},h('label',{htmlFor:id,className:'text-sm font-medium text-slate-100'},label),h('span',{className:'font-mono text-xs text-neon'},value+unit)),
+ h('input',{id,type:'range',min,max,step,value,onChange:e=>onChange(+e.target.value)}));
+const AiNum=({id,label,hint,value,min,max,unit,onChange})=>h('div',null,
+ h('label',{htmlFor:id,className:'mb-1.5 block text-xs font-medium text-slate-300'},label),
+ h('div',{className:'relative'},h('input',{id,type:'number',inputMode:'numeric',min,max,className:'inp '+(unit?'pr-10':''),value,onChange:e=>{const v=e.target.value;onChange(v===''?min:clamp(Math.round(+v)||0,min,max))}}),
+  unit&&h('span',{className:'pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500'},unit)),
+ hint&&h('p',{className:'mt-1 text-xs text-slate-500'},hint));
+const AiTile=({label,value,sub,tone})=>h('div',{className:'min-w-0 rounded-xl border border-white/10 bg-white/[.03] p-3'},
+ h('p',{className:'text-xs text-slate-400'},label),h('p',{className:'mt-0.5 truncate text-sm font-semibold '+(tone||'text-white')},value),h('p',{className:'mt-0.5 truncate text-xs text-slate-500'},sub||'\u00a0'));
+const AiAlert=({msg,onClose})=>msg?h('div',{role:'alert',className:'flex items-start gap-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200'},h(Icon,{n:'warn',c:'mt-0.5 shrink-0'}),h('p',{className:'min-w-0 flex-1 break-words'},msg),onClose&&h('button',{className:'shrink-0 text-rose-300 hover:text-white','aria-label':'Dismiss',onClick:onClose},h(Icon,{n:'x',s:16}))):null;
+
+function AIVisionPage(){
+ const m=useMicro(),{cfg}=useCfg();
+ const init=useRef(null);if(!init.current)init.current=aiLoad();
+ const [S,setS]=useState(init.current),[urlIn,setUrlIn]=useState(init.current.url);
+ const [model,setModel]=useState({state:'idle',stage:'',labels:[],error:null,backend:''});
+ const [cam,setCam]=useState({state:'off',error:null,devices:[]});
+ const [preds,setPreds]=useState([]),[cur,setCur]=useState(null),[lastDet,setLastDet]=useState(null),[hist,setHist]=useState([]),[txs,setTxs]=useState([]),[lastTx,setLastTx]=useState(null),[err,setErr]=useState(null);
+ const sr=useRef(S),mr=useRef(m);sr.current=S;mr.current=m; // the classification loop always reads the latest settings / Bluetooth state from these
+ const videoRef=useRef(null),streamRef=useRef(null),modelRef=useRef(null),loadId=useRef(0),camId=useRef(0),handleRef=useRef(null),timer=useRef(0);
+ const stab=useRef({label:null,n:0}),lostAt=useRef(0),lastConf=useRef(null),histLast=useRef(null),sentR=useRef({label:null,cmd:null,at:0}),idR=useRef(0);
+ const up=useCallback(p=>setS(s=>({...s,...p})),[]);
+ useEffect(()=>{try{localStorage.setItem(AI_KEY,JSON.stringify({...S,rec:true}))}catch(_){}},[S]);
+
+ /* ----- model ----- */
+ const dropModel=()=>{const md=modelRef.current;modelRef.current=null;aiDispose(md)};
+ const resetDetect=()=>{setPreds([]);setCur(null);stab.current={label:null,n:0};lostAt.current=0;lastConf.current=null;sentR.current={label:null,cmd:null,at:0}};
+ const loadModel=useCallback(async raw=>{
+  const n=aiNorm(raw);
+  if(n.err){setModel(x=>({...x,error:n.err}));return}
+  const id=++loadId.current; // a newer load or Clear cancels this one
+  dropModel();resetDetect();setErr(null);
+  setModel({state:'loading',stage:'Loading AI libraries…',labels:[],error:null,backend:''});
+  try{
+   const tm=await aiLibs();if(id!==loadId.current)return;
+   setModel(x=>({...x,stage:'Downloading model…'}));
+   let r;try{r=await fetch(n.url+'metadata.json',{cache:'no-store'})}catch(_){throw aiFail('Could not reach the model. Check the URL and your internet connection.')}
+   if(id!==loadId.current)return;
+   if(!r.ok)throw aiFail(r.status===404?'Model not found (404). Paste the shared link from Teachable Machine → Export Model → Upload my model.':'The model server answered with error '+r.status+'.');
+   let meta;try{meta=(await r.json())||{}}catch(_){throw aiFail('That link did not return Teachable Machine model data.')}
+   const pk=String(meta.packageName||'');
+   if(pk&&!/image/i.test(pk))throw aiFail('This is a '+(/pose/i.test(pk)?'Pose':/speech|audio/i.test(pk)?'Audio':'non-image')+' model. AI Vision supports Teachable Machine Image Project models only.');
+   const md=await tm.load(n.url+'model.json',n.url+'metadata.json');
+   if(id!==loadId.current){aiDispose(md);return}
+   const labels=md.getClassLabels().map(String);
+   if(!labels.length){aiDispose(md);throw aiFail('The model has no classes.')}
+   modelRef.current=md;
+   setModel({state:'ready',stage:'',labels,error:null,backend:window.tf.getBackend()});
+   setUrlIn(n.url);setS(s=>({...s,url:n.url,map:aiMap(labels,s.map)}));
+  }catch(e){
+   if(id!==loadId.current)return;
+   console.error('AI Vision model error:',e);
+   setModel({state:'error',stage:'',labels:[],error:aiModelErr(e),backend:''});
+  }
+ },[]);
+ const clearModel=()=>{loadId.current++;dropModel();resetDetect();setModel({state:'idle',stage:'',labels:[],error:null,backend:''});setUrlIn('');up({url:''})};
+
+ /* ----- camera ----- */
+ const killStream=()=>{const s=streamRef.current;streamRef.current=null;if(s)s.getTracks().forEach(t=>{t.onended=null;t.stop()});const v=videoRef.current;if(v){try{v.pause()}catch(_){}v.srcObject=null}};
+ const stopCam=useCallback(msg=>{camId.current++;killStream();setCam(c=>({...c,state:'off',error:msg||null}))},[]);
+ const refreshDevices=useCallback(async()=>{try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='videoinput');setCam(c=>({...c,devices:d}))}catch(_){}},[]);
+ const startCam=useCallback(async devId=>{
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setCam(c=>({...c,state:'off',error:'Camera access needs a secure page (https) in Chrome or Edge.'}));return}
+  const id=++camId.current;killStream();setCam(c=>({...c,state:'starting',error:null}));
+  const want=devId===undefined?sr.current.cam:devId,get=d=>navigator.mediaDevices.getUserMedia({audio:false,video:Object.assign({width:{ideal:640},height:{ideal:480}},d?{deviceId:{exact:d}}:{})});
+  try{
+   let st;
+   try{st=await get(want)}catch(e){if(want&&(e.name==='OverconstrainedError'||e.name==='NotFoundError')){st=await get('')}else throw e} // saved camera unplugged: fall back to the default one
+   if(id!==camId.current){st.getTracks().forEach(t=>t.stop());return}
+   streamRef.current=st;
+   st.getVideoTracks().forEach(t=>{t.onended=()=>{if(streamRef.current===st)stopCam('The camera was disconnected.')}});
+   const v=videoRef.current;v.srcObject=st;try{await v.play()}catch(_){}
+   if(id!==camId.current)return;
+   const used=st.getVideoTracks()[0].getSettings().deviceId;if(used&&used!==sr.current.cam)setS(s=>({...s,cam:used}));
+   setCam(c=>({...c,state:'on',error:null}));refreshDevices(); // device names only appear after permission is granted
+  }catch(e){if(id!==camId.current)return;killStream();setCam(c=>({...c,state:'off',error:aiCamErr(e)}))}
+ },[stopCam,refreshDevices]);
+ useEffect(()=>{
+  refreshDevices();
+  const md=navigator.mediaDevices;if(md&&md.addEventListener)md.addEventListener('devicechange',refreshDevices);
+  if(S.url)loadModel(S.url); // restore the saved model
+  return()=>{ // leaving the page: release the camera, stop the loop, free the model
+   if(md&&md.removeEventListener)md.removeEventListener('devicechange',refreshDevices);
+   loadId.current++;camId.current++;killStream();dropModel();
+  };
+ },[]);
+
+ /* ----- classification loop: exactly one at a time, and none at all while paused ----- */
+ const ready=model.state==='ready',camOn=cam.state==='on',running=ready&&camOn&&S.rec;
+ useEffect(()=>{
+  if(!running)return;
+  let alive=true,fails=0;
+  const tick=async()=>{
+   if(!alive)return;
+   const t0=performance.now(),v=videoRef.current,md=modelRef.current;
+   try{
+    if(md&&v&&v.readyState>=2&&v.videoWidth>0){
+     const out=await md.predict(v,sr.current.mirror);
+     if(!alive)return;
+     handleRef.current(out);fails=0;
+    }
+   }catch(e){
+    if(!alive)return;
+    if(++fails>=3){alive=false;console.error('AI Vision recognition error:',e);setErr('Recognition stopped after repeated errors: '+((e&&e.message)||e));setS(s=>({...s,rec:false}));return}
+   }
+   if(!alive)return;
+   timer.current=setTimeout(tick,Math.max(30,sr.current.interval-(performance.now()-t0)));
+  };
+  tick();
+  return()=>{alive=false;clearTimeout(timer.current)};
+ },[running]);
+ useEffect(()=>{if(!running){setCur(null);stab.current={label:null,n:0}}},[running]);
+ useEffect(()=>{if(!m.connected)sentR.current={label:null,cmd:null,at:0}},[m.connected]); // a fresh connection starts with a clean duplicate lock
+
+ /* ----- sending: every robot command goes through here and through the existing useMicro().send() ----- */
+ const dispatch=(cmd,label,conf,src)=>{
+  const mm=mr.current;
+  if(!mm.connected||!mm.send(cmd,{key:'ai'}))return false; // key 'ai': a newer AI command replaces one still waiting in the queue
+  const now=Date.now(),e={id:++idR.current,time:new Date(now),cmd,label,conf,src};
+  sentR.current={label,cmd,at:now};setTxs(t=>[e,...t].slice(0,50));setLastTx(e);return true;
+ };
+ const autoSend=(label,pct,cm,now)=>{
+  const s=sr.current;
+  if(!s.auto||!s.rec||!mr.current.connected||cm.enabled===false)return;
+  const cmd=cm.cmd!=null?cm.cmd:label;
+  if(!cmd||cmdErr(cmd))return;
+  const sd=sentR.current,same=sd.label===label&&sd.cmd===cmd;
+  if(same&&(s.dedupe||now-sd.at<s.repeat))return; // duplicate lock / repeat delay
+  if(now-sd.at<s.gap)return; // minimum gap between any two commands; retried on the next frame
+  dispatch(cmd,label,pct,'auto');
+ };
+ const handle=out=>{
+  const s=sr.current,now=Date.now();
+  let top=out[0];for(const p of out)if(p.probability>top.probability)top=p;
+  const label=top.className,pct=top.probability*100,cm=s.map[label]||{},need=cm.min==null?s.min:cm.min;
+  setPreds(out);
+  if(pct<need){stab.current={label:null,n:0};if(!lostAt.current)lostAt.current=now;setCur(null);return}
+  if(lostAt.current&&now-lostAt.current>1500)sentR.current={...sentR.current,label:null}; // detection was lost for a while: re-arm
+  lostAt.current=0;
+  const sb=stab.current;stab.current=sb.label===label?{label,n:sb.n+1}:{label,n:1};
+  if(stab.current.n<s.stable)return; // not stable yet
+  setCur({label,conf:pct});
+  if(histLast.current!==label){histLast.current=label;setLastDet({label,conf:pct,time:new Date(now)});setHist(l=>[{id:++idR.current,time:new Date(now),label,conf:pct},...l].slice(0,50))}
+  if(lastConf.current!==label){lastConf.current=label;sentR.current={...sentR.current,label:null}} // a different class was shown: allow its command again
+  autoSend(label,pct,cm,now);
+ };
+ handleRef.current=handle;
+ const stopNow=()=>{ // needs Bluetooth only, so it still works if recognition has been switched off
+  if(!m.connected||cmdErr(S.stop))return;
+  dispatch(S.stop,'EMERGENCY STOP',null,'stop');
+  sentR.current={label:null,cmd:null,at:Date.now()};
+  up({auto:false}); // otherwise the next detection would immediately override the stop
+ };
+
+ /* ----- mapping ----- */
+ const labels=model.labels,cls=l=>S.map[l]||{cmd:l,enabled:true,min:null};
+ const setCls=(l,p)=>setS(s=>({...s,map:{...s.map,[l]:{...(s.map[l]||{cmd:l,enabled:true,min:null}),...p}}}));
+ const matchMicro=()=>{
+  const t=cfg.trans,mv=cfg.move,k={open:t.open,close:t.close,stop:t.stop||mv.stop,up:mv.up,forward:mv.up,down:mv.down,backward:mv.down,back:mv.down,left:mv.left,right:mv.right,horn:mv.horn};
+  setS(s=>{const map={...s.map};labels.forEach(l=>{const c=k[l.trim().toLowerCase()];if(c)map[l]={...(map[l]||{enabled:true,min:null}),cmd:c}});return{...s,map}});
+ };
+ const resetMap=()=>setS(s=>{const map={...s.map};labels.forEach(l=>{delete map[l]});return{...s,map:aiMap(labels,map)}});
+ const show=c=>fmtParts(c,cfg.tx).map(p=>p.show).join('');
+ const stopErr=cmdErr(S.stop);
+
+ /* ----- view ----- */
+ const sorted=[...preds].sort((a,b)=>b.probability-a.probability),topP=sorted[0];
+ const st=model.state==='loading'?['connecting',model.stage||'Loading…']:!ready?['disconnected','No model loaded']:!camOn?['disconnected','Camera off']:!S.rec?['connecting','Recognition paused']:!preds.length?['connecting','Starting…']:cur?['connected','Detected']:['connecting','Below threshold'];
+ const modelBadge=ready?['connected','Model ready · '+labels.length+' classes']:model.state==='loading'?['connecting','Loading model…']:model.state==='error'?['error','Model error']:['disconnected','No model'];
+ const aiState=running?'Running':!ready?'No model':!camOn?'Camera off':'Paused';
+ const autoState=!S.auto?'Off':!m.connected?'Waiting for Bluetooth':!S.rec?'Recognition off':'Active';
+ const busy=model.state==='loading';
+
+ const camCard=h(Card,{title:'Live camera',icon:'cam'},
+  h('div',{className:'relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-black'},
+   h('video',{ref:videoRef,playsInline:true,muted:true,autoPlay:true,'aria-label':'Camera preview',className:'h-full w-full object-cover',style:{transform:S.mirror?'scaleX(-1)':'none'}}),
+   !camOn&&h('div',{className:'absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/80 text-slate-400'},h(Icon,{n:'cam',s:36}),h('p',{className:'text-sm'},cam.state==='starting'?'Starting camera…':'Camera is off')),
+   camOn&&h('span',{className:'absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-ink/70 px-3 py-1 text-xs font-medium text-slate-100 backdrop-blur'},h('span',{className:'h-2 w-2 rounded-full '+TONE[st[0]][0]}),st[1]),
+   camOn&&cur&&h('div',{className:'absolute inset-x-3 bottom-3 flex items-center justify-between gap-3 rounded-xl border border-neon/40 bg-ink/75 px-4 py-2 backdrop-blur'},h('span',{className:'truncate text-lg font-bold text-white'},cur.label),h('span',{className:'font-mono text-sm text-neon'},cur.conf.toFixed(0)+'%'))),
+  h('div',{className:'mt-4 flex flex-wrap gap-2'},
+   h('button',{className:'btn btn-p',disabled:camOn||cam.state==='starting',onClick:()=>startCam()},h(Icon,{n:'play',s:16}),cam.state==='starting'?'Starting…':'Start Camera'),
+   h('button',{className:'btn btn-g',disabled:cam.state==='off',onClick:()=>stopCam()},h(Icon,{n:'stop',s:16}),'Stop Camera'),
+   cam.devices.length>1&&h('select',{'aria-label':'Camera',className:'inp min-w-0 flex-1 sm:max-w-[16rem]',value:S.cam,onChange:e=>{up({cam:e.target.value});if(cam.state!=='off')startCam(e.target.value)}},
+    !cam.devices.some(d=>d.deviceId===S.cam)&&h('option',{value:S.cam},'Default camera'),
+    cam.devices.map((d,i)=>h('option',{key:d.deviceId||i,value:d.deviceId},d.label||'Camera '+(i+1))))),
+  h('div',{className:'mt-4 grid gap-4 sm:grid-cols-2'},
+   h(AiRange,{id:'ai-int',label:'Recognition interval',value:S.interval,min:100,max:2000,step:50,unit:' ms',onChange:v=>up({interval:v})}),
+   h(Toggle,{label:'Mirror camera',desc:'Match how the model was trained on a webcam.',checked:S.mirror,onChange:v=>up({mirror:v})})));
+
+ const bars=sorted.slice(0,3),rest=sorted.slice(3);
+ const detCard=h(Card,{title:'AI detection',icon:'brain'},
+  h('div',{className:'rounded-xl border p-4 text-center transition '+(cur?'border-neon/40 bg-neon/5':'border-white/10 bg-ink/50')},
+   h('p',{className:'flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-widest text-slate-400','aria-live':'polite'},h('span',{className:'h-2 w-2 rounded-full '+TONE[st[0]][0]}),st[1]),
+   h('p',{className:'mt-2 truncate text-3xl font-bold '+(cur?'text-white':'text-slate-600')},cur?cur.label:'—'),
+   h('p',{className:'mt-1 font-mono text-sm '+(cur?'text-neon':'text-slate-600')},cur?cur.conf.toFixed(1)+'% confidence':topP?'best guess '+topP.className+' · '+(topP.probability*100).toFixed(0)+'%':'No prediction yet')),
+  h('div',{className:'mt-3 divide-y divide-white/5'},
+   h(Toggle,{label:'Recognition',desc:'Turn off to pause the AI and free the CPU.',checked:S.rec,onChange:v=>up({rec:v})})),
+  h('div',{className:'mt-2'},h(AiRange,{id:'ai-min',label:'Minimum confidence',value:S.min,min:0,max:100,unit:'%',onChange:v=>up({min:v})})),
+  h('p',{className:'mb-3 mt-5 text-xs font-medium text-slate-300'},'Top 3 predictions'),
+  bars.length?h('div',{className:'space-y-3'},bars.map((p,i)=>h(AiBar,{key:p.className,label:p.className,pct:p.probability*100,top:i===0}))):h('p',{className:'rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-slate-500'},'Predictions appear here once a model is loaded and the camera is running.'),
+  rest.length>0&&h('details',{className:'mt-4'},h('summary',{className:'cursor-pointer text-xs text-slate-400 hover:text-white'},'All classes ('+sorted.length+')'),
+   h('div',{className:'mt-3 space-y-3'},rest.map(p=>h(AiBar,{key:p.className,label:p.className,pct:p.probability*100})))));
+
+ const modelCard=h(Card,{title:'Model configuration',icon:'cpu'},
+  h('div',{className:'flex flex-col gap-3 sm:flex-row'},
+   h('input',{className:'inp min-w-0 flex-1','aria-label':'Teachable Machine model URL',placeholder:'https://teachablemachine.withgoogle.com/models/XXXXX/',value:urlIn,spellCheck:false,autoCapitalize:'off',autoCorrect:'off',disabled:busy,
+    onChange:e=>setUrlIn(e.target.value),onKeyDown:e=>{if(e.key==='Enter'&&!busy)loadModel(urlIn)}}),
+   h('div',{className:'flex gap-2'},
+    h('button',{className:'btn btn-p flex-1 sm:flex-none',disabled:busy||!urlIn.trim(),onClick:()=>loadModel(urlIn)},busy?h(Icon,{n:'rot',s:16,c:'animate-spin'}):h(Icon,{n:'brain',s:16}),busy?'Loading…':'Load Model'),
+    h('button',{className:'btn btn-g flex-1 sm:flex-none',disabled:busy?false:model.state==='idle'&&!urlIn&&!S.url,onClick:clearModel},h(Icon,{n:'trash',s:16}),'Clear Model'))),
+  busy&&h('p',{className:'mt-3 flex items-center gap-2 text-sm text-amber-300','aria-live':'polite'},h(Icon,{n:'rot',s:14,c:'animate-spin'}),model.stage),
+  model.error&&h('div',{role:'alert',className:'mt-3 flex items-start gap-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200'},h(Icon,{n:'warn',c:'mt-0.5 shrink-0'}),h('p',{className:'min-w-0 break-words'},model.error)),
+  ready&&h('div',{className:'mt-3'},
+   h('div',{className:'flex flex-wrap gap-2'},labels.map(l=>h('span',{key:l,className:'rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200'},l))),
+   h('p',{className:'mt-2 text-xs text-slate-500'},labels.length+' classes · TensorFlow.js backend: '+(model.backend||'—')+' · URL saved in this browser and restored when you open AI Vision.')),
+  !ready&&!busy&&h('p',{className:'mt-3 text-xs text-slate-500'},'Train an Image Project at ',h('a',{href:'https://teachablemachine.withgoogle.com/train/image',target:'_blank',rel:'noreferrer',className:'text-neon underline'},'teachablemachine.withgoogle.com'),', choose Export Model → Upload my model, and paste the shared link here.'));
+
+ const robotCard=h(Card,{title:'AI robot control',icon:'bot'},
+  h('div',{className:'grid grid-cols-2 gap-3'},
+   h(AiTile,{label:'AI recognition',value:aiState,sub:ready?labels.length+' classes':'Load a model',tone:running?'text-emerald-300':'text-slate-300'}),
+   h(AiTile,{label:'Bluetooth',value:m.connected?(m.name||'Connected'):'Disconnected',sub:m.connected?'Nordic UART':'Connect your Micro',tone:m.connected?'text-emerald-300':'text-rose-300'}),
+   h(AiTile,{label:'Last detected class',value:lastDet?lastDet.label:'—',sub:lastDet?aiTime(lastDet.time):'Nothing detected yet'}),
+   h(AiTile,{label:'Confidence',value:cur?cur.conf.toFixed(1)+'%':topP?(topP.probability*100).toFixed(1)+'%':'—',sub:cur?'Above threshold':topP?'Below threshold':'',tone:cur?'text-neon':'text-slate-300'}),
+   h(AiTile,{label:'Last command sent',value:lastTx?lastTx.cmd:'—',sub:lastTx?aiTime(lastTx.time)+' · '+(lastTx.src==='stop'?'emergency':'auto'):'Nothing sent yet'}),
+   h(AiTile,{label:'Auto-send',value:autoState,sub:'Class commands',tone:autoState==='Active'?'text-emerald-300':'text-amber-300'})),
+  !m.connected&&h('p',{className:'mt-3 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200'},h(Icon,{n:'warn',s:14,c:'mt-0.5 shrink-0'}),'Bluetooth is disconnected, so no commands are sent. Detection still works.'),
+  h('div',{className:'mt-2 divide-y divide-white/5'},h(Toggle,{label:'Send commands automatically',desc:'Sends the mapped command when a class passes its confidence threshold.',checked:S.auto,onChange:v=>up({auto:v})})),
+  h('button',{className:'btn btn-e mt-3 w-full !py-4 text-base',disabled:!m.connected||!!stopErr,onClick:stopNow},h(Icon,{n:'stop',s:18}),'EMERGENCY STOP'),
+  h('p',{className:'mt-2 text-xs text-slate-500'},stopErr?'Fix the STOP command in Auto-send rules.':'Sends “'+show(S.stop)+'” right away and switches automatic sending off until you turn it back on.'));
+
+ const rulesCard=h(Card,{title:'Auto-send rules',icon:'send'},
+  h('div',{className:'grid grid-cols-2 gap-4'},
+   h(AiNum,{id:'ai-gap',label:'Delay between commands',hint:'Minimum pause between any two',value:S.gap,min:0,max:60000,unit:'ms',onChange:v=>up({gap:v})}),
+   h(AiNum,{id:'ai-rep',label:'Repeat delay',hint:'Same command again (duplicates allowed)',value:S.repeat,min:0,max:60000,unit:'ms',onChange:v=>up({repeat:v})}),
+   h(AiNum,{id:'ai-stab',label:'Stability',hint:'Frames in a row before sending',value:S.stable,min:1,max:10,unit:'×',onChange:v=>up({stable:v})})),
+  h('div',{className:'mt-2 divide-y divide-white/5'},h(Toggle,{label:'Prevent duplicate commands',desc:'A class that stays in view sends once. Showing another class (or losing detection for 1.5 s) re-arms it.',checked:S.dedupe,onChange:v=>up({dedupe:v})})),
+  h('div',{className:'mt-3'},
+   h('label',{htmlFor:'ai-stop',className:'mb-1.5 block text-xs font-medium text-slate-300'},'Emergency STOP command'),
+   h('div',{className:'flex gap-2'},
+    h('input',{id:'ai-stop',className:'inp min-w-0 flex-1 '+(stopErr?'bad':''),value:S.stop,spellCheck:false,onChange:e=>up({stop:e.target.value})}),
+    h('button',{className:'btn btn-g shrink-0',title:'Use the stop command from Micro Data Settings',onClick:()=>up({stop:cfg.trans.stop||cfg.move.stop})},h(Icon,{n:'term',s:16}),'Micro Data')),
+   h('p',{className:'mt-1 text-xs '+(stopErr?'text-rose-300':'text-slate-500')},stopErr||'Transmitted as “'+show(S.stop)+'” using your Micro Data Settings format.')));
+
+ const mapCard=h(Card,{title:'Class-to-command mapping',icon:'term'},
+  labels.length===0?h('p',{className:'py-6 text-center text-sm text-slate-500'},'Load a model to map its classes to micro:bit commands.'):h(React.Fragment,null,
+   h('div',{className:'mb-4 flex flex-wrap items-center justify-between gap-3'},
+    h('p',{className:'min-w-0 flex-1 text-xs text-slate-400'},'Each class sends its own name by default. Leave “Min %” empty to use the global threshold ('+S.min+'%).'),
+    h('div',{className:'flex gap-2'},h('button',{className:'btn btn-g',onClick:matchMicro},h(Icon,{n:'cpu',s:16}),'Match Micro Data'),h('button',{className:'btn btn-g',onClick:resetMap},h(Icon,{n:'rot',s:16}),'Reset'))),
+   h('div',{className:'grid gap-3 lg:grid-cols-2'},labels.map(l=>{
+    const c=cls(l),e=c.cmd===''?'Enter a command':cmdErr(c.cmd);
+    return h('div',{key:l,className:'rounded-xl border bg-white/[.03] p-3 '+(c.enabled?'border-white/10':'border-white/5 opacity-70')},
+     h('div',{className:'flex flex-wrap items-center gap-3'},
+      h(AiSw,{checked:c.enabled,onChange:v=>setCls(l,{enabled:v}),label:'Send command for '+l}),
+      h('span',{className:'min-w-[5rem] flex-1 truncate text-sm font-semibold text-white',title:l},l),
+      h('input',{'aria-label':'Command for '+l,className:'inp w-32 '+(e?'bad':''),value:c.cmd,spellCheck:false,onChange:ev=>setCls(l,{cmd:ev.target.value})}),
+      h('input',{'aria-label':'Minimum confidence for '+l,type:'number',inputMode:'numeric',min:0,max:100,placeholder:'Min %',className:'inp w-20',value:c.min==null?'':c.min,onChange:ev=>{const v=ev.target.value;setCls(l,{min:v===''?null:clamp(Math.round(+v)||0,0,100)})}})),
+     e&&h('p',{className:'mt-2 text-xs text-rose-300'},e+' — this class will not send.'))
+   })),
+   h('p',{className:'mt-3 text-xs text-slate-500'},'Commands are sent through your existing Bluetooth connection in the Micro Data Settings format (newline, delimiter, packet size).')));
+
+ const histCard=h(Card,{title:'Detection history',icon:'act'},
+  h('div',{className:'mb-3 flex justify-end'},h('button',{className:'btn btn-g',disabled:!hist.length,onClick:()=>{setHist([]);histLast.current=null}},h(Icon,{n:'trash',s:16}),'Clear history')),
+  hist.length===0?h('p',{className:'py-6 text-center text-sm text-slate-500'},'Detected classes will be listed here.'):
+  h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs'},hist.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
+   h('time',{className:'shrink-0 text-slate-500'},aiTime(e.time)),h('span',{className:'min-w-0 flex-1 truncate text-slate-100'},e.label),h('span',{className:'shrink-0 text-neon'},e.conf.toFixed(0)+'%')))));
+
+ const txCard=h(Card,{title:'Command transmissions',icon:'radio'},
+  h('div',{className:'mb-3 flex justify-end'},h('button',{className:'btn btn-g',disabled:!txs.length,onClick:()=>{setTxs([]);setLastTx(null)}},h(Icon,{n:'trash',s:16}),'Clear')),
+  txs.length===0?h('p',{className:'py-6 text-center text-sm text-slate-500'},'Commands sent to the micro:bit will be listed here.'):
+  h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs'},txs.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
+   h('time',{className:'shrink-0 text-slate-500'},aiTime(e.time)),h('span',{className:'w-16 shrink-0 '+(e.src==='stop'?'text-rose-300':'text-cyan-300')},e.src==='stop'?'stop':'sent'),
+   h('span',{className:'min-w-0 flex-1 truncate text-slate-100'},e.cmd),h('span',{className:'shrink-0 text-slate-400'},e.conf!=null?e.label+' · '+e.conf.toFixed(0)+'%':'manual')))));
+
+ return h('div',{className:'space-y-6'},
+  h(Head,{title:'AI Vision',sub:'Recognize objects, colors and gestures with a Teachable Machine model and drive your robot over Bluetooth.'},
+   h('div',{className:'flex flex-wrap items-center gap-2'},h(AiPill,{tone:modelBadge[0],label:modelBadge[1]}),h(Badge,{status:m.status}),h(ConnectionControls))),
+  h(ErrorBanner),
+  h(AiAlert,{msg:cam.error||err,onClose:()=>{setErr(null);setCam(c=>({...c,error:null}))}}),
+  modelCard,
+  h('div',{className:'grid gap-4 lg:grid-cols-2'},camCard,detCard),
+  h('div',{className:'grid gap-4 lg:grid-cols-2'},robotCard,rulesCard),
+  mapCard,
+  h('div',{className:'grid gap-4 lg:grid-cols-2'},histCard,txCard));
+}
+
 /* ---------- tab registry: add one entry to add a tab ---------- */
 const TABS=[
  {id:'dashboard',label:'Dashboard',icon:'dash',component:DashboardPage},
  {id:'controller',label:'Micro Controller',icon:'pad',component:ControllerPage},
  {id:'data',label:'Micro Data',icon:'term',component:MicroDataPage},
+ {id:'ai',label:'AI Vision',icon:'brain',component:AIVisionPage},
  {id:'settings',label:'Settings',icon:'cog',component:SettingsPage}
 ];
 
@@ -588,3 +928,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(h(PrefsProvider,null
 </script>
 </body>
 </html>
+
