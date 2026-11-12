@@ -98,7 +98,7 @@ const CFG_DEF={
  servo:{p1:'c',p2:'x',min1:0,max1:180,min2:0,max2:180,def:90},
  trans:TRANSPORTER,
  tx:{newline:true,delim:'',delay:25,log:true,mode:'auto',chunk:20},
- park:{c1:'P1',c2:'P2',c3:'P3',occ:'1',avail:'0',sep:':',mode:'realtime'} // Smart Parking: slot commands, values, separator, update mode
+ park:{o1:'P1:1',a1:'P1:0',o2:'P2:1',a2:'P2:0',o3:'P3:1',a3:'P3:0',mode:'realtime'} // Smart Parking: the full string for each slot being occupied (o) / available (a), plus update mode
 };
 const CK='lofi.cfg.v1',clone=o=>JSON.parse(JSON.stringify(o)),clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const NAMES={up:'Forward',down:'Backward',left:'Left',right:'Right',stop:'Stop',horn:'Horn'};
@@ -112,7 +112,7 @@ const fromForm=f=>({move:Object.fromEntries(Object.entries(f.move).map(([k,v])=>
  servo:{p1:f.servo.p1,p2:f.servo.p2,min1:num(f.servo.min1),max1:num(f.servo.max1),min2:num(f.servo.min2),max2:num(f.servo.max2),def:num(f.servo.def)},
  trans:{open:f.trans.open,close:f.trans.close,stop:f.trans.stop,travelMs:num(f.trans.travelMs),fbOpen:list(f.trans.fbOpen),fbClosed:list(f.trans.fbClosed)},
  tx:{newline:!!f.tx.newline,delim:f.tx.delim,delay:num(f.tx.delay),log:!!f.tx.log,mode:f.tx.mode,chunk:num(f.tx.chunk)},
- park:{c1:f.park.c1,c2:f.park.c2,c3:f.park.c3,occ:f.park.occ,avail:f.park.avail,sep:f.park.sep,mode:f.park.mode}});
+ park:{o1:f.park.o1,a1:f.park.a1,o2:f.park.o2,a2:f.park.a2,o3:f.park.o3,a3:f.park.a3,mode:f.park.mode}});
 const cmdErr=(v,empty)=>{v=String(v);return !v?(empty?null:'Enter a command'):!ASCII.test(v)?'Use printable characters only':v!==v.trim()?'Remove spaces at the start or end':v.length>20?'Use 20 characters or fewer':null};
 const numErr=(v,lo,hi)=>{v=String(v).trim();return !/^\d+$/.test(v)?'Enter a whole number':(+v<lo||+v>hi)?'Use '+lo+' to '+hi:null};
 function validate(f){
@@ -138,13 +138,9 @@ function validate(f){
  E('tx.delim',hit&&'“'+x.delim+'” appears inside the command “'+hit+'”');
  if(!x.newline&&!x.delim)w.push('No newline or delimiter: messages run together (“upstop”) and a bare “c” cannot be told apart from “c90”. Your micro must read a continuous stream.');
  [t.open,t.close,t.stop].filter(c=>c&&Object.values(m).includes(c)).forEach(c=>w.push('“'+c+'” is used by both Movement and Transporter.'));
- // Smart Parking: slot commands must be unique; values must differ; neither may contain the separator
- const pk=f.park||toForm(CFG_DEF).park,pl=v=>String(v).trim().toLowerCase(),pSeen={},sepOk=/^[\x21-\x7E]{1,3}$/.test(pk.sep);
- const inSep=v=>sepOk&&String(v).includes(pk.sep)?'Must not contain the separator “'+pk.sep+'”':null;
- E('park.sep',sepOk?null:'Use 1 to 3 visible characters, no spaces');
- ['c1','c2','c3'].forEach((k,i)=>{const r=cmdErr(pk[k])||inSep(pk[k]);E('park.'+k,r);if(!r){const l=pl(pk[k]);if(pSeen[l])E('park.'+k,'Already used by Slot '+pSeen[l]);else pSeen[l]=i+1}});
- ['occ','avail'].forEach(k=>E('park.'+k,cmdErr(pk[k])||inSep(pk[k])));
- if(!e['park.occ']&&!e['park.avail']&&pl(pk.occ)===pl(pk.avail))E('park.avail','Must differ from the occupied value');
+ // Smart Parking: six full strings, every one different (case-insensitive)
+ const pk=f.park||toForm(CFG_DEF).park,pSeen={};
+ [1,2,3].forEach(n=>['o','a'].forEach(t=>{const k=t+n,r=cmdErr(pk[k]);E('park.'+k,r);if(!r){const l=String(pk[k]).trim().toLowerCase();if(pSeen[l])E('park.'+k,'Already used by '+pSeen[l]);else pSeen[l]='Slot '+n+(t==='o'?' occupied':' available')}}));
  if(!['realtime','stable','manual'].includes(pk.mode))E('park.mode','Pick an update mode');
  return{errors:e,warnings:[...new Set(w)]};
 }
@@ -258,23 +254,13 @@ function MicroProvider({children}){
 const PARK_N=3,STABLE_MS=1500,ParkCtx=createContext(),useParking=()=>useContext(ParkCtx);
 const PK_MODES=[['realtime','Real-time'],['stable','Stable 1.5 s'],['manual','Manual apply']];
 const PK_HINT={realtime:'Every valid reading changes the slot immediately.',stable:'A slot changes only after the new reading has held for 1.5 s. Filters sensor flicker.',manual:'Readings are held back until you press “Apply updates” on the Smart Parking tab.'};
-const parkLine=(K,i,occ)=>K['c'+(i+1)]+K.sep+(occ?K.occ:K.avail); // the one place that builds a parking data string
+const parkLine=(K,i,occ)=>K[(occ?'o':'a')+(i+1)]; // the exact string for a slot state: each slot has its own, edited in Micro Data Settings
 // Returns [{slot,occ}] for every valid reading in the text; anything else is ignored. Uses ONLY saved settings (K = cfg.park).
 function parkParse(text,K){
- const out=[],low=s=>String(s).trim().toLowerCase(),occ=low(K.occ),av=low(K.avail),cmds=[0,1,2].map(i=>low(K['c'+(i+1)]));
- const seps=[K.sep,...[':','='].filter(x=>x!==K.sep)]; // configured separator first; “:” and “=” always accepted
- const one=tok=>{
-  tok=String(tok).trim();if(!tok)return false;
-  for(const sp of seps){
-   const at=tok.indexOf(sp);if(at<1)continue;
-   const slot=cmds.indexOf(low(tok.slice(0,at))),v=low(tok.slice(at+sp.length));
-   if(slot<0)continue;
-   if(v===occ){out.push({slot,occ:true});return true}
-   if(v===av){out.push({slot,occ:false});return true}
-  }
-  return false;
- };
- const ws=[' ',',',';'].filter(c=>!K.sep.includes(c)).map(c=>c===' '?'\\s':c).join('');
+ const out=[],low=v=>String(v).trim().toLowerCase(),map=new Map();
+ [0,1,2].forEach(i=>{map.set(low(K['o'+(i+1)]),{slot:i,occ:true});map.set(low(K['a'+(i+1)]),{slot:i,occ:false})});
+ const one=tok=>{const r=map.get(low(tok));if(r){out.push({slot:r.slot,occ:r.occ});return true}return false};
+ const used=[...map.keys()].join(''),ws=[' ',',',';'].filter(c=>!used.includes(c)).map(c=>c===' '?'\\s':c).join('');
  String(text).split(/[\r\n]+/).forEach(line=>{if(!one(line)&&ws)line.split(new RegExp('['+ws+']+')).forEach(one)}); // several readings may arrive in one packet
  return out;
 }
@@ -622,14 +608,13 @@ function MicroDataPage(){
     h(Seg,{label:'Write mode',value:f.tx.mode,onChange:v=>set('tx','mode',v),options:[['auto','Auto'],['withResponse','With response'],['withoutResponse','No response']]}),
     h('div',{className:'mt-4'},fld('tx','chunk','Bytes per packet','Longer messages are split. 20 suits every micro:bit',NI))),
    h(Card,{title:'Smart Parking Configuration',icon:'park',className:'lg:col-span-2'},
-    h('p',{className:'mb-4 text-xs text-slate-400'},'The micro:bit reports each parking sensor as “command”, “separator”, “value” (for example P1:1). The Smart Parking tab reads these saved values; nothing is hardcoded.'),
-    h('div',{className:'grid gap-4 sm:grid-cols-3'},fld('park','c1','Slot 1 command','Default “P1”'),fld('park','c2','Slot 2 command','Default “P2”'),fld('park','c3','Slot 3 command','Default “P3”')),
-    h('div',{className:'mt-4 grid gap-4 sm:grid-cols-3'},fld('park','occ','Occupied value','Car detected. Default “1”'),fld('park','avail','Available value','No car. Default “0”'),fld('park','sep','Data separator','Between command and value. Default “:”')),
+    h('p',{className:'mb-4 text-xs text-slate-400'},'Type the exact text your micro:bit sends for each state. Every slot has its own strings and you can use anything you like (for example P1:1, SLOT1_FULL or car1). Matching ignores upper/lower case.'),
+    h('div',{className:'grid gap-4 sm:grid-cols-2'},[1,2,3].flatMap(n=>[fld('park','o'+n,'Slot '+n+' occupied string','Car detected. Default “'+CFG_DEF.park['o'+n]+'”'),fld('park','a'+n,'Slot '+n+' available string','No car. Default “'+CFG_DEF.park['a'+n]+'”')])),
     h('p',{className:'mb-2 mt-5 text-xs font-medium text-slate-300'},'Update mode'),
     h(Seg,{label:'Update mode',value:f.park.mode,onChange:v=>set('park','mode',v),options:PK_MODES}),
     h('p',{className:'mt-2 text-xs '+(E['park.mode']?'text-rose-300':'text-slate-500')},E['park.mode']||PK_HINT[f.park.mode]),
     h('div',{className:'mt-4 flex flex-wrap items-center justify-between gap-3'},
-     h('p',{className:'min-w-0 flex-1 text-xs text-slate-500'},'The separators “:” and “=” are always accepted too, so P1:1 and P1=1 both work. Invalid lines are ignored.'),
+     h('p',{className:'min-w-0 flex-1 text-xs text-slate-500'},'A line must match one of the six strings exactly. Anything else is ignored. All six must be different.'),
      h('button',{className:'btn btn-g',onClick:resetPark},h(Icon,{n:'rot',s:16}),'Reset parking defaults')))),
   h(LivePreview,{f,E,warnings,dirty}),
   h(Boundary,null,h(ParkPreview,{f,E,dirty})),
@@ -643,8 +628,8 @@ function MicroDataPage(){
 
 function ParkPreview({f,E,dirty}){
  const m=useMicro(),K=f.park,g=E['tx.delim'],tx={newline:f.tx.newline,delim:g?'':f.tx.delim},rows=[];
- [0,1,2].forEach(i=>[true,false].forEach(o=>rows.push({i,o,bad:E['park.c'+(i+1)]||E['park.'+(o?'occ':'avail')]||E['park.sep']||g,str:parkLine(K,i,o)})));
- const ex=[true,false,true].map((o,i)=>'Slot '+(i+1)+': '+(E['park.c'+(i+1)]||E['park.occ']||E['park.avail']||E['park.sep']?'(fix the highlighted fields)':parkLine(K,i,o))).join('\n');
+ [0,1,2].forEach(i=>[true,false].forEach(o=>rows.push({i,o,bad:E['park.'+(o?'o':'a')+(i+1)]||g,str:parkLine(K,i,o)})));
+ const ex=[true,false,true].map((o,i)=>'Slot '+(i+1)+': '+(E['park.o'+(i+1)]||E['park.a'+(i+1)]?'(fix the highlighted fields)':parkLine(K,i,o))).join('\n');
  return h(Card,{title:'Smart Parking Data Preview',icon:'park'},
   h('p',{className:'mb-3 text-xs '+(dirty?'text-amber-300':'text-slate-400')},dirty?'Previewing unsaved changes. Smart Parking keeps using the saved values until you save, and Send is locked.':'Matches what Smart Parking expects right now.'),
   h('div',{className:'grid gap-4 lg:grid-cols-3'},
@@ -1078,7 +1063,7 @@ function SmartParkingPage({navigate}){
     h('p',{className:'mb-3 text-xs text-slate-400'},'Your micro:bit should write one reading per line to its UART:'),
     h('div',{className:'grid grid-cols-3 gap-2 font-mono text-xs'},[0,1,2].map(i=>h('div',{key:i,className:'rounded-xl border border-white/10 bg-white/5 p-2'},
      h('p',{className:'mb-1 text-slate-400'},'Slot '+(i+1)),h('p',{className:'text-cyan-200'},parkLine(K,i,true)),h('p',{className:'text-slate-300'},parkLine(K,i,false))))),
-    h('p',{className:'mt-2 text-xs text-slate-500'},'First line = occupied, second = available. “:” and “=” both work as separators; anything else is ignored.'),
+    h('p',{className:'mt-2 text-xs text-slate-500'},'First line = occupied, second = available. Edit these strings in Micro Data Settings; anything else is ignored.'),
     h('button',{className:'btn btn-g mt-3',onClick:()=>navigate&&navigate('data')},h(Icon,{n:'term',s:16}),'Edit in Micro Data Settings'))),
   h(LiveActivity));
 }
