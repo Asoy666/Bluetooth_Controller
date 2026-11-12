@@ -312,9 +312,9 @@ const Row=(k,v)=>h('div',{key:k,className:'flex items-center justify-between gap
 
 function LiveActivity(){
  const m=useMicro();
- return h(Card,{title:'Live activity',icon:'act',className:'xl:flex xl:max-h-[calc(100vh-3rem)] xl:flex-col'},m.log.length===0
+ return h(Card,{title:'Live activity',icon:'act'},m.log.length===0
   ?h('p',{className:'py-6 text-sm text-slate-500'},'No activity yet. Connect your Micro to begin.')
-  :h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs xl:max-h-none xl:min-h-0 xl:flex-1'},m.log.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
+  :h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs'},m.log.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
     h('time',{className:'shrink-0 text-slate-500'},e.time.toLocaleTimeString([],{hour12:false})),h('span',{className:'w-16 shrink-0 '+LS[e.type]},LL[e.type]),h('span',{className:'min-w-0 break-words text-slate-200'},e.text)))));
 }
 
@@ -324,7 +324,7 @@ function DashboardPage({navigate}){
  return h('div',{className:'space-y-6'},
   h(Head,{title:'Welcome to microbit control web',sub:'Your smart control center for Micro.'},h(Badge,{status:m.status})),
   h(ErrorBanner),
-  h('div',{className:'grid grid-cols-2 gap-4 2xl:grid-cols-4'},
+  h('div',{className:'grid grid-cols-2 gap-4 lg:grid-cols-4'},
    h(Stat,{icon:'cpu',label:'Device status',value:m.connected?'Online':'Offline',hint:m.name||'No device paired'}),
    h(Stat,{icon:'radio',label:'Connection type',value:m.connected?'Bluetooth LE':'—',hint:m.connected?'Nordic UART service':'Not connected'}),
    h(Stat,{icon:'send',label:'Commands sent',value:m.sent,hint:'This session'}),
@@ -335,7 +335,8 @@ function DashboardPage({navigate}){
     Row('Battery',m.battery!=null?m.battery+'%':m.connected?'Not reported by firmware':'—'))),
    h(Card,{title:'Quick controls',icon:'pad',className:'lg:col-span-2'},
     h('div',{className:'flex flex-wrap items-center gap-2'},h(ConnectionControls),h('button',{className:'btn btn-g',onClick:()=>navigate('controller')},h(Icon,{n:'pad',s:16}),'Open Controller')),
-    h('p',{className:'mt-3 text-xs text-slate-500'},'The Micro must run the UART Bluetooth program with “No pairing required”.'))));
+    h('p',{className:'mt-3 text-xs text-slate-500'},'The Micro must run the UART Bluetooth program with “No pairing required”.'))),
+  h(LiveActivity));
 }
 
 const KEYS={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
@@ -376,7 +377,8 @@ function ControllerPage(){
     h('button',{className:'btn btn-g w-full',disabled:off,onClick:()=>{setSlider('s1',sv.def);setSlider('s2',sv.def)}},h(Icon,{n:'rot',s:14}),'Default position ('+sv.def+')')),
    h(Card,{title:'Speed',icon:'act'},h(Slider,{label:'Right stick range',ch:'',value:prefs.speed,min:10,max:100,onChange:v=>setPref('speed',v)}),
     h('p',{className:'mt-3 text-xs text-slate-500'},'Limits how far the right stick moves the sliders from 90. Saved on this device.'))),
-  h(Boundary,null,h(TransporterControl)));
+  h(Boundary,null,h(TransporterControl)),
+  h(LiveActivity));
 }
 
 /* ---------- Transporter Control (cargo compartment / gripper servo) ---------- */
@@ -579,9 +581,7 @@ function App(){
  const [active,setActive]=useState(TABS[0].id); // Dashboard is the default
  const Page=(TABS.find(t=>t.id===active)||TABS[0]).component;
  return h('div',{className:'min-h-screen'},h(Sidebar,{active,onSelect:setActive}),
-  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{className:'mx-auto max-w-[96rem] p-4 sm:p-6 lg:p-8 xl:flex xl:items-start xl:gap-6'},
-   h('div',{key:active,className:'page min-w-0 flex-1'},h(Boundary,{key:active},h(Page,{navigate:setActive}))),
-   h('aside',{className:'mt-6 xl:sticky xl:top-6 xl:mt-0 xl:w-80 xl:shrink-0','aria-label':'Live activity'},h(Boundary,null,h(LiveActivity))))));
+  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{key:active,className:'page mx-auto max-w-6xl p-4 sm:p-6 lg:p-8'},h(Boundary,{key:active},h(Page,{navigate:setActive})))));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(h(PrefsProvider,null,h(CfgProvider,null,h(MicroProvider,null,h(App)))));
 })();
