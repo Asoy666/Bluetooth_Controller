@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>LOFI Control · Micro</title>
+<title>microbit control web</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']},colors:{ink:'#060914',electric:'#3b82f6',neon:'#22d3ee',violet:'#8b5cf6'}}}}</script>
@@ -155,7 +155,7 @@ class MicroLink{
   // micro:bit UART characteristics are the reverse of Nordic's naming, so pick them by what they can do.
   const chars=await svc.getCharacteristics();
   const tx=chars.find(c=>c.properties.notify||c.properties.indicate),rx=chars.find(c=>c.properties.write||c.properties.writeWithoutResponse);
-  if(!tx||!rx)throw new Error('UART service found, but it has no notify/write characteristics. Re-flash the LOFI MakeCode program.');
+  if(!tx||!rx)throw new Error('UART service found, but it has no notify/write characteristics. Re-flash your MakeCode UART program.');
   this.rx=rx;
   tx.addEventListener('characteristicvaluechanged',e=>{const t=dec.decode(e.target.value).trim();if(t&&this.onData)this.onData(t)});
   await tx.startNotifications();
@@ -238,7 +238,7 @@ function MicroProvider({children}){
 class Boundary extends React.Component{
  constructor(p){super(p);this.state={e:null}}
  static getDerivedStateFromError(e){return{e}}
- componentDidCatch(e){console.error('LOFI UI error:',e)}
+ componentDidCatch(e){console.error('microbit control web UI error:',e)}
  render(){
   const e=this.state.e;
   return e?h('div',{role:'alert',className:'rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200'},
@@ -310,13 +310,21 @@ function DPad({dir,onDir,onHorn,onStop,disabled}){
 const LS={tx:'text-cyan-300',rx:'text-violet-300',event:'text-slate-300',error:'text-rose-300'},LL={tx:'sent',rx:'received',event:'event',error:'error'};
 const Row=(k,v)=>h('div',{key:k,className:'flex items-center justify-between gap-3 border-b border-white/5 pb-2 last:border-0'},h('dt',{className:'text-slate-400'},k),h('dd',{className:'truncate text-slate-100'},v));
 
+function LiveActivity(){
+ const m=useMicro();
+ return h(Card,{title:'Live activity',icon:'act',className:'xl:flex xl:max-h-[calc(100vh-3rem)] xl:flex-col'},m.log.length===0
+  ?h('p',{className:'py-6 text-sm text-slate-500'},'No activity yet. Connect your Micro to begin.')
+  :h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs xl:max-h-none xl:min-h-0 xl:flex-1'},m.log.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
+    h('time',{className:'shrink-0 text-slate-500'},e.time.toLocaleTimeString([],{hour12:false})),h('span',{className:'w-16 shrink-0 '+LS[e.type]},LL[e.type]),h('span',{className:'min-w-0 break-words text-slate-200'},e.text)))));
+}
+
 function DashboardPage({navigate}){
  const m=useMicro();
  const sys=!m.supported?'Unsupported':m.status==='error'?'Error':m.status==='connecting'?'Connecting':'Ready';
  return h('div',{className:'space-y-6'},
-  h(Head,{title:'Welcome to LOFI Control',sub:'Your smart control center for Micro.'},h(Badge,{status:m.status})),
+  h(Head,{title:'Welcome to microbit control web',sub:'Your smart control center for Micro.'},h(Badge,{status:m.status})),
   h(ErrorBanner),
-  h('div',{className:'grid grid-cols-2 gap-4 lg:grid-cols-4'},
+  h('div',{className:'grid grid-cols-2 gap-4 2xl:grid-cols-4'},
    h(Stat,{icon:'cpu',label:'Device status',value:m.connected?'Online':'Offline',hint:m.name||'No device paired'}),
    h(Stat,{icon:'radio',label:'Connection type',value:m.connected?'Bluetooth LE':'—',hint:m.connected?'Nordic UART service':'Not connected'}),
    h(Stat,{icon:'send',label:'Commands sent',value:m.sent,hint:'This session'}),
@@ -327,11 +335,7 @@ function DashboardPage({navigate}){
     Row('Battery',m.battery!=null?m.battery+'%':m.connected?'Not reported by firmware':'—'))),
    h(Card,{title:'Quick controls',icon:'pad',className:'lg:col-span-2'},
     h('div',{className:'flex flex-wrap items-center gap-2'},h(ConnectionControls),h('button',{className:'btn btn-g',onClick:()=>navigate('controller')},h(Icon,{n:'pad',s:16}),'Open Controller')),
-    h('p',{className:'mt-3 text-xs text-slate-500'},'The Micro must run the LOFI UART Bluetooth program with “No pairing required”.'))),
-  h(Card,{title:'Live activity',icon:'act'},m.log.length===0
-   ?h('p',{className:'py-6 text-sm text-slate-500'},'No activity yet. Connect your Micro to begin.')
-   :h('ul',{className:'max-h-72 space-y-1 overflow-y-auto font-mono text-xs'},m.log.map(e=>h('li',{key:e.id,className:'flex gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5'},
-     h('time',{className:'shrink-0 text-slate-500'},e.time.toLocaleTimeString([],{hour12:false})),h('span',{className:'w-16 shrink-0 '+LS[e.type]},LL[e.type]),h('span',{className:'min-w-0 break-words text-slate-200'},e.text))))));
+    h('p',{className:'mt-3 text-xs text-slate-500'},'The Micro must run the UART Bluetooth program with “No pairing required”.'))));
 }
 
 const KEYS={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
@@ -345,8 +349,6 @@ function ControllerPage(){
  useEffect(()=>{setSl(s=>({s1:clamp(s.s1,sv.min1,sv.max1),s2:clamp(s.s2,sv.min2,sv.max2)}));lastSl.current={}},[sv]);
  useEffect(()=>{lastDir.current='stop';lastSl.current={};setDirS('stop')},[connected]);
  const onLeft=({x,y})=>Math.hypot(x,y)<.35?setDir('stop'):setDir(Math.abs(x)>Math.abs(y)?(x>0?'right':'left'):(y>0?'up':'down'));
- const axis=(x,i,k)=>{const lo=sv['min'+i],hi=sv['max'+i],d=sv.def;return Math.round(clamp(x>=0?d+x*(hi-d)*k:d+x*(d-lo)*k,lo,hi))}; // stick centre = default servo position
- const onRight=({x,y})=>{const k=prefs.speed/100;setSlider('s1',axis(x,1,k));setSlider('s2',axis(y,2,k))};
  useEffect(()=>{
   if(!connected||!prefs.keyboard)return;
   const typing=e=>e.target.tagName==='INPUT'&&e.target.type!=='range';
@@ -357,18 +359,16 @@ function ControllerPage(){
  },[connected,prefs.keyboard,setDir]);
  const off=!connected;
  return h('div',{className:'space-y-6'},
-  h(Head,{title:'Micro Controller',sub:'Drive with the left stick, steer servos with the right stick or sliders.'},
+  h(Head,{title:'Micro Controller',sub:'Drive with the joystick or D-pad, steer servos with the sliders.'},
    h('div',{className:'flex flex-wrap items-center gap-3'},h(Badge,{status}),h(ConnectionControls))),
   h(ErrorBanner),
   off&&h('div',{className:'glass flex flex-wrap items-center justify-between gap-3 p-4 text-sm'},h('p',{className:'text-slate-300'},'Controls are locked until a Micro is connected over Bluetooth.'),
    h('button',{className:'btn btn-p',onClick:connect,disabled:status==='connecting'},h(Icon,{n:'bt',s:16}),'Connect Micro')),
-  h('div',{className:'grid gap-4 lg:grid-cols-3'},
+  h('div',{className:'grid gap-4 lg:grid-cols-2'},
    h(Card,{title:'Movement',className:'flex flex-col items-center'},h(Joystick,{label:'Left',onChange:onLeft,disabled:off}),h('p',{className:'mt-3 text-xs text-slate-400'},'Sends ',h('span',{className:'font-mono text-neon'},move[dir]))),
    h(Card,{title:'Directional pad',className:'flex flex-col items-center justify-between gap-6'},
     h(DPad,{dir,onDir:setDir,onHorn:d=>send(d?move.horn:move.stop,{key:'horn'}),onStop:()=>setDir('stop'),disabled:off}),
-    h('button',{className:'btn btn-d w-full',disabled:off,onClick:()=>{lastDir.current='';setDir('stop')}},h(Icon,{n:'stop',s:14}),'Stop')),
-   h(Card,{title:'Actions',className:'flex flex-col items-center'},h(Joystick,{label:'Right',accent:'violet',onChange:onRight,disabled:off}),
-    h('p',{className:'mt-3 text-xs text-slate-400'},'X → '+sv.p1+sl.s1+' · Y → '+sv.p2+sl.s2))),
+    h('button',{className:'btn btn-d w-full',disabled:off,onClick:()=>{lastDir.current='';setDir('stop')}},h(Icon,{n:'stop',s:14}),'Stop'))),
   h('div',{className:'grid gap-4 md:grid-cols-2'},
    h(Card,{title:'Sliders'+(sv.min1===sv.min2&&sv.max1===sv.max2?' ('+sv.min1+'–'+sv.max1+')':''),className:'space-y-5'},
     h(Slider,{label:'Slider 1',ch:sv.p1,value:sl.s1,min:sv.min1,max:sv.max1,onChange:v=>setSlider('s1',v),disabled:off}),
@@ -567,11 +567,11 @@ function Sidebar({active,onSelect}){
   h('aside',{className:'glass fixed inset-y-0 left-0 z-30 hidden w-64 flex-col !rounded-none border-y-0 border-l-0 p-4 md:flex'},
    h('div',{className:'mb-8 flex items-center gap-3 px-2 pt-2'},
     h('div',{className:'flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-electric via-neon to-violet text-ink'},h(Icon,{n:'bot',s:22})),
-    h('div',null,h('p',{className:'text-lg font-bold leading-none text-white'},'LOFI'),h('p',{className:'mt-1 text-xs text-slate-400'},'Micro Control'))),
+    h('div',null,h('p',{className:'text-base font-bold leading-tight text-white'},'microbit control web'),h('p',{className:'mt-1 text-xs text-slate-400'},'Micro Control'))),
    h('nav',{className:'flex flex-1 flex-col gap-1','aria-label':'Main'},TABS.map(t=>item(t,false))),
    h('a',{href:'https://cardboard.lofirobot.com/microbit-control-app-info/',target:'_blank',rel:'noreferrer',className:'flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition hover:border-white/20'},
     h('div',{className:'flex h-9 w-9 items-center justify-center rounded-full bg-violet/30 text-violet-200'},h(Icon,{n:'info',s:16})),
-    h('div',{className:'min-w-0'},h('p',{className:'truncate text-sm font-medium text-white'},'LOFI Operator'),h('p',{className:'text-xs text-slate-400'},'About · v1.0')))),
+    h('div',{className:'min-w-0'},h('p',{className:'truncate text-sm font-medium text-white'},'microbit control web'),h('p',{className:'text-xs text-slate-400'},'About · v1.0')))),
   h('nav',{className:'glass fixed inset-x-0 bottom-0 z-30 flex justify-around !rounded-none border-x-0 border-b-0 px-2 pt-2 md:hidden',style:{paddingBottom:'env(safe-area-inset-bottom,0px)'},'aria-label':'Main'},TABS.map(t=>item(t,true))));
 }
 
@@ -579,7 +579,9 @@ function App(){
  const [active,setActive]=useState(TABS[0].id); // Dashboard is the default
  const Page=(TABS.find(t=>t.id===active)||TABS[0]).component;
  return h('div',{className:'min-h-screen'},h(Sidebar,{active,onSelect:setActive}),
-  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{key:active,className:'page mx-auto max-w-6xl p-4 sm:p-6 lg:p-8'},h(Boundary,{key:active},h(Page,{navigate:setActive})))));
+  h('main',{className:'pb-24 md:pb-0 md:pl-64'},h('div',{className:'mx-auto max-w-[96rem] p-4 sm:p-6 lg:p-8 xl:flex xl:items-start xl:gap-6'},
+   h('div',{key:active,className:'page min-w-0 flex-1'},h(Boundary,{key:active},h(Page,{navigate:setActive}))),
+   h('aside',{className:'mt-6 xl:sticky xl:top-6 xl:mt-0 xl:w-80 xl:shrink-0','aria-label':'Live activity'},h(Boundary,null,h(LiveActivity))))));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(h(PrefsProvider,null,h(CfgProvider,null,h(MicroProvider,null,h(App)))));
 })();
