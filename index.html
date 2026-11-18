@@ -269,16 +269,16 @@ function ParkingProvider({children}){
  const [live,setLive]=useState(()=>Array(PARK_N).fill(false)),[seen,setSeen]=useState(()=>Array(PARK_N).fill(null)),[heard,setHeard]=useState(0);
  const [pend,setPend]=useState({}),[demo,setDemoS]=useState(false),[sim,setSim]=useState(()=>Array(PARK_N).fill(false));
  const lr=useRef(live);lr.current=live;const pr=useRef(pend);pr.current=pend;
- const tm=useRef([]),cand=useRef([]);
+ const tm=useRef([]),cand=useRef([]),[camLive,setCamLive]=useState(false);
  const apply=useCallback((i,occ)=>{
   if(lr.current[i]===occ)return;
   const n=lr.current.slice();n[i]=occ;lr.current=n;setLive(n);
   push('event','Smart Parking: Slot '+(i+1)+' is now '+(occ?'OCCUPIED':'AVAILABLE'));
  },[push]);
  const drop=i=>{clearTimeout(tm.current[i]);tm.current[i]=null;cand.current[i]=null};
- // ONE subscription to the existing Bluetooth UART stream (no second connection, no extra GATT listener)
- useEffect(()=>onRx(text=>{
-  const C=kr.current,ups=parkParse(text,C);if(!ups.length)return;
+ // ingest(): the ONE entry point for readings, [{slot,occ}]. Used by the Bluetooth UART stream AND by the camera (Teachable Machine).
+ const ingest=useCallback(ups=>{
+  const C=kr.current;if(!ups.length)return;
   const now=new Date();setHeard(n=>n+ups.length);
   setSeen(s=>{const n=s.slice();ups.forEach(u=>{n[u.slot]=now});return n});
   ups.forEach(({slot:i,occ})=>{
@@ -291,7 +291,9 @@ function ParkingProvider({children}){
    }
    apply(i,occ);
   });
- }),[onRx,apply]);
+ },[apply]);
+ // ONE subscription to the existing Bluetooth UART stream (no second connection, no extra GATT listener)
+ useEffect(()=>onRx(text=>ingest(parkParse(text,kr.current))),[onRx,ingest]);
  // leaving a mode cleans up after it
  useEffect(()=>{[0,1,2].forEach(drop);if(K.mode!=='manual'&&Object.keys(pr.current).length){Object.keys(pr.current).forEach(k=>apply(+k,pr.current[k]));setPend({})}},[K.mode]);
  useEffect(()=>()=>tm.current.forEach(t=>clearTimeout(t)),[]);
@@ -303,7 +305,7 @@ function ParkingProvider({children}){
  const setSimSlot=useCallback((i,occ)=>{setSim(s=>s.map((v,j)=>j===i?occ:v));push('event','Smart Parking (demo): Slot '+(i+1)+' set to '+(occ?'OCCUPIED':'AVAILABLE')+' · simulated')},[push]);
  const applyPending=useCallback(()=>{const p=pr.current;Object.keys(p).forEach(k=>apply(+k,p[k]));setPend({})},[apply]);
  const pending=Object.keys(pend).filter(k=>pend[k]!==live[k]).length;
- const v=useMemo(()=>({K,slots:demo?sim:live,demo,setDemo,setSimSlot,seen,heard,pending,applyPending}),[K,demo,sim,live,setDemo,setSimSlot,seen,heard,pending,applyPending]);
+ const v=useMemo(()=>({K,slots:demo?sim:live,demo,setDemo,setSimSlot,seen,heard,pending,applyPending,ingest,camLive,setCamLive}),[K,demo,sim,live,setDemo,setSimSlot,seen,heard,pending,applyPending,ingest,camLive]);
  return h(ParkCtx.Provider,{value:v},children);
 }
 
@@ -1025,10 +1027,123 @@ const PkStat=({icon,label,value,hint,color})=>h('div',{className:'glass p-4'},
  h('div',{className:'mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-electric/30 to-violet/30 text-neon'},h(Icon,{n:icon})),
  h('p',{className:'text-xs text-slate-400'},label),h('p',{className:'mt-0.5 text-2xl font-bold',style:{color:color||'#fff'}},value),h('p',{className:'mt-1 truncate text-xs text-slate-500'},hint));
 
+/* ---------- Smart Parking camera: Teachable Machine, frame split into 3 slot zones ---------- */
+const PKC_KEY='lofi.park.ai.v1',PKC_ROLES=['occ','free','ignore'],PKC_LBL={occ:'Occupied',free:'Available',ignore:'Ignore'};
+const pkcGuess=l=>/^(background|none|nothing|idle|neutral|ignore)$/i.test(l.trim())?'ignore':/(free|empty|avail|vacant|open|no[ _-]?car)/i.test(l)?'free':/(occ|full|car|taken|busy|park)/i.test(l)?'occ':'ignore';
+const pkcLoad=()=>{try{const j=JSON.parse(localStorage.getItem(PKC_KEY)||'{}')||{},n=(v,a,b,f)=>v!==''&&v!=null&&Number.isFinite(+v)?clamp(Math.round(+v),a,b):f,map={};
+ if(j.map&&typeof j.map==='object')Object.keys(j.map).forEach(k=>{if(PKC_ROLES.includes(j.map[k]))map[k]=j.map[k]});
+ return{url:typeof j.url==='string'?j.url:'',min:n(j.min,0,100,75),interval:n(j.interval,100,2000,500),cam:typeof j.cam==='string'?j.cam:'',map}}catch(_){return{url:'',min:75,interval:500,cam:'',map:{}}}};
+function ParkCamera(){
+ const {ingest,setCamLive,K}=useParking();
+ const init=useRef(null);if(!init.current)init.current=pkcLoad();
+ const [S,setS]=useState(init.current),[urlIn,setUrlIn]=useState(init.current.url),[on,setOn]=useState(true);
+ const [model,setModel]=useState({state:'idle',stage:'',labels:[],error:null}),[cam,setCam]=useState({state:'off',error:null,devices:[]}),[res,setRes]=useState([null,null,null]),[err,setErr]=useState(null);
+ const sr=useRef(S),ir=useRef(ingest);sr.current=S;ir.current=ingest;
+ const vid=useRef(null),stream=useRef(null),mdl=useRef(null),lid=useRef(0),cid=useRef(0),cv=useRef(null),timer=useRef(0);
+ const up=useCallback(p=>setS(s=>({...s,...p})),[]);
+ useEffect(()=>{try{localStorage.setItem(PKC_KEY,JSON.stringify(S))}catch(_){}},[S]);
+ const drop=()=>{const x=mdl.current;mdl.current=null;aiDispose(x)};
+ const load=useCallback(async raw=>{
+  const n=aiNorm(raw);if(n.err){setModel(x=>({...x,error:n.err}));return}
+  const id=++lid.current;drop();setRes([null,null,null]);setErr(null);
+  setModel({state:'loading',stage:'Loading AI libraries…',labels:[],error:null});
+  try{
+   const tm=await aiLibs();if(id!==lid.current)return;
+   setModel(x=>({...x,stage:'Downloading model…'}));
+   let r;try{r=await fetch(n.url+'metadata.json',{cache:'no-store'})}catch(_){throw aiFail('Could not reach the model. Check the URL and your internet connection.')}
+   if(id!==lid.current)return;
+   if(!r.ok)throw aiFail(r.status===404?'Model not found (404). Paste the shared link from Teachable Machine → Export Model → Upload my model.':'The model server answered with error '+r.status+'.');
+   let meta;try{meta=(await r.json())||{}}catch(_){throw aiFail('That link did not return Teachable Machine model data.')}
+   const pk=String(meta.packageName||'');if(pk&&!/image/i.test(pk))throw aiFail('Smart Parking supports Teachable Machine Image Project models only.');
+   const md=await tm.load(n.url+'model.json',n.url+'metadata.json');
+   if(id!==lid.current){aiDispose(md);return}
+   const labels=md.getClassLabels().map(String);
+   if(!labels.length){aiDispose(md);throw aiFail('The model has no classes.')}
+   mdl.current=md;setModel({state:'ready',stage:'',labels,error:null});setUrlIn(n.url);
+   setS(s=>{const map={...s.map};labels.forEach(l=>{if(!map[l])map[l]=pkcGuess(l)});return{...s,url:n.url,map}});
+  }catch(e){if(id!==lid.current)return;console.error('Parking model error:',e);setModel({state:'error',stage:'',labels:[],error:aiModelErr(e)})}
+ },[]);
+ const clearModel=()=>{lid.current++;drop();setRes([null,null,null]);setModel({state:'idle',stage:'',labels:[],error:null});setUrlIn('');up({url:''})};
+ const kill=()=>{const s=stream.current;stream.current=null;if(s)s.getTracks().forEach(t=>{t.onended=null;t.stop()});const v=vid.current;if(v){try{v.pause()}catch(_){}v.srcObject=null}};
+ const stopCam=useCallback(msg=>{cid.current++;kill();setCam(c=>({...c,state:'off',error:msg||null}))},[]);
+ const devs=useCallback(async()=>{try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='videoinput');setCam(c=>({...c,devices:d}))}catch(_){}},[]);
+ const startCam=useCallback(async devId=>{
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setCam(c=>({...c,error:'Camera access needs a secure page (https) in Chrome or Edge.'}));return}
+  const id=++cid.current;kill();setCam(c=>({...c,state:'starting',error:null}));
+  const want=devId===undefined?sr.current.cam:devId,get=d=>navigator.mediaDevices.getUserMedia({audio:false,video:Object.assign({width:{ideal:640},height:{ideal:480}},d?{deviceId:{exact:d}}:{})});
+  try{
+   let st;try{st=await get(want)}catch(e){if(want&&(e.name==='OverconstrainedError'||e.name==='NotFoundError'))st=await get('');else throw e}
+   if(id!==cid.current){st.getTracks().forEach(t=>t.stop());return}
+   stream.current=st;st.getVideoTracks().forEach(t=>{t.onended=()=>{if(stream.current===st)stopCam('The camera was disconnected.')}});
+   const v=vid.current;v.srcObject=st;try{await v.play()}catch(_){}
+   if(id!==cid.current)return;
+   const used=st.getVideoTracks()[0].getSettings().deviceId;if(used&&used!==sr.current.cam)up({cam:used});
+   setCam(c=>({...c,state:'on',error:null}));devs();
+  }catch(e){if(id!==cid.current)return;kill();setCam(c=>({...c,state:'off',error:aiCamErr(e)}))}
+ },[stopCam,devs,up]);
+ useEffect(()=>{devs();if(S.url)load(S.url);return()=>{lid.current++;cid.current++;kill();drop();setCamLive(false)}},[]);
+ const ready=model.state==='ready',camOn=cam.state==='on',running=ready&&camOn&&on;
+ useEffect(()=>{setCamLive(running);if(!running)setRes([null,null,null])},[running]);
+ useEffect(()=>{
+  if(!running)return;
+  let alive=true,fails=0;
+  const tick=async()=>{
+   if(!alive)return;
+   const t0=performance.now(),v=vid.current,md=mdl.current;
+   try{
+    if(md&&v&&v.readyState>=2&&v.videoWidth>0){
+     const c=cv.current||(cv.current=document.createElement('canvas')),w=v.videoWidth,hh=v.videoHeight,zw=w/3,sz=Math.min(zw,hh),s=sr.current,next=[],ups=[];
+     c.width=224;c.height=224;const cx=c.getContext('2d');
+     for(let z=0;z<3;z++){
+      cx.drawImage(v,z*zw+(zw-sz)/2,(hh-sz)/2,sz,sz,0,0,224,224); // centre square of each zone, like Teachable Machine's own crop
+      const out=await md.predict(c,false);if(!alive)return;
+      let top=out[0];for(const p of out)if(p.probability>top.probability)top=p;
+      const pct=top.probability*100,role=s.map[top.className]||pkcGuess(top.className),ok=pct>=s.min&&role!=='ignore';
+      next.push({label:top.className,pct,role:ok?role:null});if(ok)ups.push({slot:z,occ:role==='occ'});
+     }
+     setRes(next);ir.current(ups);fails=0;
+    }
+   }catch(e){if(!alive)return;if(++fails>=3){alive=false;setErr('Recognition stopped after repeated errors: '+((e&&e.message)||e));setOn(false);return}}
+   if(!alive)return;
+   timer.current=setTimeout(tick,Math.max(30,sr.current.interval-(performance.now()-t0)));
+  };
+  tick();return()=>{alive=false;clearTimeout(timer.current)};
+ },[running]);
+ const busy=model.state==='loading',zone=(r,z)=>h('div',{key:z,className:'relative border-2 border-dashed',style:{borderColor:r&&r.role==='occ'?'rgba(244,63,94,.85)':r&&r.role==='free'?'rgba(34,197,94,.85)':'rgba(255,255,255,.3)'}},
+  h('span',{className:'absolute inset-x-1 bottom-1 truncate rounded-md bg-ink/75 px-2 py-1 text-center text-[11px] font-semibold text-white'},'Slot '+(z+1)+' · '+(r?r.label+' '+r.pct.toFixed(0)+'%':'—')));
+ return h(Card,{title:'Camera detection (Teachable Machine)',icon:'cam'},
+  h('p',{className:'mb-4 text-xs text-slate-400'},'The camera view is split into 3 equal zones, left to right = Slot 1, 2, 3. Each zone is classified by your model (for example classes “Car” and “Empty”) and updates its slot using the current update mode ('+K.mode+').'),
+  h('div',{className:'flex flex-col gap-3 sm:flex-row'},
+   h('input',{className:'inp min-w-0 flex-1','aria-label':'Teachable Machine model URL',placeholder:'https://teachablemachine.withgoogle.com/models/XXXXX/',value:urlIn,spellCheck:false,autoCapitalize:'off',autoCorrect:'off',disabled:busy,onChange:e=>setUrlIn(e.target.value),onKeyDown:e=>{if(e.key==='Enter'&&!busy)load(urlIn)}}),
+   h('div',{className:'flex gap-2'},
+    h('button',{className:'btn btn-p flex-1 sm:flex-none',disabled:busy||!urlIn.trim(),onClick:()=>load(urlIn)},h(Icon,{n:busy?'rot':'brain',s:16,c:busy?'animate-spin':''}),busy?'Loading…':'Load Model'),
+    h('button',{className:'btn btn-g flex-1 sm:flex-none',disabled:!busy&&model.state==='idle'&&!urlIn&&!S.url,onClick:clearModel},h(Icon,{n:'trash',s:16}),'Clear'))),
+  busy&&h('p',{className:'mt-3 text-sm text-amber-300','aria-live':'polite'},model.stage),
+  h('div',{className:'mt-3'},h(AiAlert,{msg:model.error||cam.error||err,onClose:()=>{setErr(null);setCam(c=>({...c,error:null}));setModel(m=>({...m,error:null}))}})),
+  h('div',{className:'relative mt-4 aspect-video overflow-hidden rounded-xl border border-white/10 bg-black'},
+   h('video',{ref:vid,playsInline:true,muted:true,autoPlay:true,'aria-label':'Parking camera preview',className:'h-full w-full object-cover'}),
+   !camOn&&h('div',{className:'absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/80 text-slate-400'},h(Icon,{n:'cam',s:36}),h('p',{className:'text-sm'},cam.state==='starting'?'Starting camera…':'Camera is off')),
+   camOn&&h('div',{className:'absolute inset-0 grid grid-cols-3'},[0,1,2].map(z=>zone(running?res[z]:null,z)))),
+  h('div',{className:'mt-4 flex flex-wrap gap-2'},
+   h('button',{className:'btn btn-p',disabled:camOn||cam.state==='starting',onClick:()=>startCam()},h(Icon,{n:'play',s:16}),cam.state==='starting'?'Starting…':'Start Camera'),
+   h('button',{className:'btn btn-g',disabled:cam.state==='off',onClick:()=>stopCam()},h(Icon,{n:'stop',s:16}),'Stop Camera'),
+   cam.devices.length>1&&h('select',{'aria-label':'Camera',className:'inp min-w-0 flex-1 sm:max-w-[16rem]',value:S.cam,onChange:e=>{up({cam:e.target.value});if(cam.state!=='off')startCam(e.target.value)}},
+    !cam.devices.some(d=>d.deviceId===S.cam)&&h('option',{value:S.cam},'Default camera'),cam.devices.map((d,i)=>h('option',{key:d.deviceId||i,value:d.deviceId},d.label||'Camera '+(i+1))))),
+  h('div',{className:'mt-4 grid gap-4 sm:grid-cols-2'},
+   h(AiRange,{id:'pk-min',label:'Minimum confidence',value:S.min,min:0,max:100,unit:'%',onChange:v=>up({min:v})}),
+   h(AiRange,{id:'pk-int',label:'Recognition interval',value:S.interval,min:100,max:2000,step:50,unit:' ms',onChange:v=>up({interval:v})})),
+  h('div',{className:'mt-2 divide-y divide-white/5'},h(Toggle,{label:'Camera recognition',desc:'Turn off to pause detection and free the CPU. The camera stays on.',checked:on,onChange:setOn})),
+  ready&&h('div',{className:'mt-4'},h('p',{className:'mb-2 text-xs font-medium text-slate-300'},'What each class means'),
+   h('div',{className:'grid gap-3 sm:grid-cols-2'},model.labels.map(l=>h('div',{key:l,className:'flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.03] p-3'},
+    h('span',{className:'min-w-0 flex-1 truncate text-sm font-semibold text-white',title:l},l),
+    h('select',{'aria-label':'Meaning of '+l,className:'inp w-36',value:S.map[l]||pkcGuess(l),onChange:e=>setS(s=>({...s,map:{...s.map,[l]:e.target.value}}))},PKC_ROLES.map(r=>h('option',{key:r,value:r},PKC_LBL[r]))))))),
+  h('p',{className:'mt-3 text-xs text-slate-500'},'Camera readings feed the slots like Bluetooth readings do. Nothing is sent to the micro:bit. Train with the camera placed the same way you will use it, and put one slot in each third of the frame.'));
+}
+
 function SmartParkingPage({navigate}){
- const m=useMicro(),{K,slots,demo,setDemo,setSimSlot,seen,heard,pending,applyPending}=useParking();
+ const m=useMicro(),{K,slots,demo,setDemo,setSimSlot,seen,heard,pending,applyPending,camLive}=useParking();
  const total=slots.length,occN=slots.filter(Boolean).length,avN=total-occN,pct=total?Math.round(occN/total*100):0;
- const src=demo?'Simulated data · Demo Mode':m.connected?(heard?'Live · Bluetooth sensors':'Connected · waiting for sensor data'):'Offline · last known state';
+ const src=demo?'Simulated data · Demo Mode':m.connected||camLive?(heard?'Live · sensors & camera':'Connected · waiting for sensor data'):'Offline · last known state';
  const modeLabel=(PK_MODES.find(x=>x[0]===K.mode)||PK_MODES[0])[1];
  return h('div',{className:'space-y-6'},
   h(Head,{title:'SMART PARKING SYSTEM',sub:'Real-time parking space monitoring'},h('div',{className:'flex flex-wrap items-center gap-3'},h(Badge,{status:m.status}),h(ConnectionControls))),
@@ -1045,6 +1160,7 @@ function SmartParkingPage({navigate}){
    h(PkStat,{icon:'check',label:'Available',value:avN,hint:'Free spaces',color:'#86efac'}),
    h(PkStat,{icon:'act',label:'Occupancy',value:pct+'%',hint:occN+' of '+total+' in use'})),
   h('div',{className:'grid gap-4 md:grid-cols-3'},slots.map((o,i)=>h(SlotCard,{key:i,i,occ:!!o,demo,seen:seen[i],onSet:setSimSlot}))),
+  h(Boundary,null,h(ParkCamera)),
   h('div',{className:'grid gap-4 lg:grid-cols-2'},
    h(Card,{title:'Occupancy',icon:'act'},
     h('div',{className:'h-3 overflow-hidden rounded-full bg-white/10',role:'progressbar','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':pct,'aria-label':'Occupancy'},
